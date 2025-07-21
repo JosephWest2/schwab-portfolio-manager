@@ -51,8 +51,11 @@ func sortByPurchasePriority(assets []Asset, proportions map[string]float64) {
 	})
 }
 
-// returns purchases to be made, alters assets to reflect changes
-func balanceAllocation(cash float64, assets []Asset, proportions map[string]float64) map[string]int64 {
+// returns purchases to be made, remaining cash, and new assets
+func balanceAllocation(cash float64, assets []Asset, proportions map[string]float64) (map[string]int64, float64, []Asset) {
+	newAssets := make([]Asset, len(assets))
+	copy(newAssets, assets)
+	assets = newAssets
 	purchases := make(map[string]int64, 0)
 	minAssetPrice := minAssetPrice(assets)
 	for cash >= minAssetPrice {
@@ -67,36 +70,54 @@ func balanceAllocation(cash float64, assets []Asset, proportions map[string]floa
 			break
 		}
 	}
-	return purchases
+	return purchases, cash, assets
+}
+func getAssetDeviation(asset Asset, total float64, proportion float64) float64 {
+	return math.Pow(asset.Amount*asset.Price/total-proportion, 2)
 }
 
-func deviation(assets []Asset, proportions map[string]float64) float64 {
+func getAssetsDeviation(assets []Asset, proportions map[string]float64) float64 {
 	totalValue := sumAssetValues(assets)
 	deviation := 0.0
 	for _, v := range assets {
-		deviation += math.Pow(v.Amount * v.Price / totalValue - proportions[v.Ticker], 2)
+		deviation += getAssetDeviation(v, totalValue, proportions[v.Ticker])
 	}
 	return deviation
 }
 
-// returns purchases and sales to be made, alters assets to reflect changes
-func rebalanceWithSelling(cash float64, assets []Asset, proportions map[string]float64) map[string]int64 {
-	purchasesAndSales := balanceAllocation(cash, assets, proportions)
-	cashSpent := 0.0
-	for _, v := range assets {
-		cashSpent += v.Price * float64(purchasesAndSales[v.Ticker])
-	}
-	cash -= cashSpent
-	deviation := deviation(assets, proportions)
-	newDeviation := 0.0
-	for newDeviation < deviation {
-		i := 0
+// returns purchases to be made, remaining cash, and new assets
+func rebalanceWithSelling(cash float64, assets []Asset, proportions map[string]float64) (map[string]int64, float64, []Asset) {
+	purchasesAndSales, cash, assets := balanceAllocation(cash, assets, proportions)
+	deviation := getAssetsDeviation(assets, proportions)
+outer:
+	for {
+		sortByPurchasePriority(assets, proportions)
 		j := len(assets) - 1
-		for i < j {
-
+		for j > 0 {
+			i := 0
+			for i < j {
+				if assets[i].Price+cash <= assets[j].Price {
+					newAssets := make([]Asset, len(assets))
+					copy(newAssets, assets)
+					newAssets[i].Amount++
+					newAssets[j].Amount--
+					newDeviation := getAssetsDeviation(newAssets, proportions)
+					if newDeviation < deviation {
+						deviation = newDeviation
+						assets = newAssets
+						cashChange := assets[j].Price - assets[i].Price
+						cash += cashChange
+						purchasesAndSales[assets[i].Ticker]++
+						purchasesAndSales[assets[j].Ticker]--
+						continue outer
+					}
+					break
+				}
+				i++
+			}
+			j--
 		}
+		break
 	}
-
-
-
+	return purchasesAndSales, cash, assets
 }

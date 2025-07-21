@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -21,7 +22,7 @@ func TestBalanceAllocation(t *testing.T) {
 		"DFIC": 6,
 		"DFEM": 8,
 	}
-	purchases := balanceAllocation(cash, assets, proportions)
+	purchases, cash, assets := balanceAllocation(cash, assets, proportions)
 	if len(purchases) != len(expected) {
 		t.Fatalf("Expected %v, got %v", expected, purchases)
 	}
@@ -87,5 +88,26 @@ func TestAllocationTotal(t *testing.T) {
 	}
 	if total != 1.0 {
 		t.Errorf("Allocation total should be 1.0, was %v", total)
+	}
+}
+
+func TestRebalanceWithSelling(t *testing.T) {
+	assets := []Asset{
+		{"DFAC", 30, 9.8},
+		{"DFIC", 30, 10.2},
+		{"DFEM", 30, 10.1},
+	}
+	proportions := map[string]float64{
+		"DFAC": 0.64,
+		"DFIC": 0.27,
+		"DFEM": 0.09,
+	}
+	purchasesAndSales, cash, assets := rebalanceWithSelling(5, assets, proportions)
+	fmt.Println("assets", assets)
+	fmt.Println("cash", cash)
+	fmt.Println(purchasesAndSales)
+	total := sumAssetValues(assets)
+	for _, v := range assets {
+		fmt.Println(v.Ticker, v.Amount*v.Price/total)
 	}
 }
