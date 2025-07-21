@@ -85,39 +85,30 @@ func getAssetsDeviation(assets []Asset, proportions map[string]float64) float64 
 	return deviation
 }
 
+func proposedSaleDeviation(assets []Asset, proportions map[string]float64) (string, float64, []Asset, float64) {
+	newAssets := make([]Asset, len(assets))
+	copy(newAssets, assets)
+	sortByPurchasePriority(newAssets, proportions)
+	i := len(newAssets) - 1
+	newAssets[i].Amount--
+	return newAssets[i].Ticker, newAssets[i].Price, newAssets, getAssetsDeviation(newAssets, proportions)
+}
+
 // returns purchases to be made, remaining cash, and new assets
 func rebalanceWithSelling(cash float64, assets []Asset, proportions map[string]float64) (map[string]int64, float64, []Asset) {
-	purchasesAndSales, cash, assets := balanceAllocation(cash, assets, proportions)
 	deviation := getAssetsDeviation(assets, proportions)
-outer:
-	for {
-		sortByPurchasePriority(assets, proportions)
-		j := len(assets) - 1
-		for j > 0 {
-			i := 0
-			for i < j {
-				if assets[i].Price+cash <= assets[j].Price {
-					newAssets := make([]Asset, len(assets))
-					copy(newAssets, assets)
-					newAssets[i].Amount++
-					newAssets[j].Amount--
-					newDeviation := getAssetsDeviation(newAssets, proportions)
-					if newDeviation < deviation {
-						deviation = newDeviation
-						assets = newAssets
-						cashChange := assets[j].Price - assets[i].Price
-						cash += cashChange
-						purchasesAndSales[assets[i].Ticker]++
-						purchasesAndSales[assets[j].Ticker]--
-						continue outer
-					}
-					break
-				}
-				i++
-			}
-			j--
-		}
-		break
+	purchasesAndSales := make(map[string]int64, 0)
+	tickerSold, cashFromSale, newAssets, newDeviation := proposedSaleDeviation(assets, proportions)
+	for newDeviation < deviation {
+		deviation = newDeviation
+		cash += cashFromSale
+		assets = newAssets
+		purchasesAndSales[tickerSold]--
+		tickerSold, cashFromSale, newAssets, newDeviation = proposedSaleDeviation(assets, proportions)
+	}
+	purchases, cash, assets := balanceAllocation(cash, assets, proportions)
+	for k, v := range purchases {
+		purchasesAndSales[k] += v
 	}
 	return purchasesAndSales, cash, assets
 }

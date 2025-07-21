@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"math"
 	"testing"
 )
 
@@ -91,6 +91,10 @@ func TestAllocationTotal(t *testing.T) {
 	}
 }
 
+func almostEqual(a, b, epsilon float64) bool {
+	return math.Abs(a-b) < epsilon
+}
+
 func TestRebalanceWithSelling(t *testing.T) {
 	assets := []Asset{
 		{"DFAC", 30, 9.8},
@@ -102,12 +106,31 @@ func TestRebalanceWithSelling(t *testing.T) {
 		"DFIC": 0.27,
 		"DFEM": 0.09,
 	}
-	purchasesAndSales, cash, assets := rebalanceWithSelling(5, assets, proportions)
-	fmt.Println("assets", assets)
-	fmt.Println("cash", cash)
-	fmt.Println(purchasesAndSales)
-	total := sumAssetValues(assets)
+	cash := 5.0
+	oldSumValue := sumAssetValues(assets) + cash
+	purchasesAndSales, cash, assets := rebalanceWithSelling(cash, assets, proportions)
+	newSumValue := sumAssetValues(assets) + cash
+	if !almostEqual(oldSumValue, newSumValue, 1e-7) {
+		t.Errorf("Expected oldSumValue and newSumValue to be equal, was %v and %v", oldSumValue, newSumValue)
+	}
+	expectedAssets := map[string]float64{
+		"DFAC": 59,
+		"DFIC": 24,
+		"DFEM": 8,
+	}
 	for _, v := range assets {
-		fmt.Println(v.Ticker, v.Amount*v.Price/total)
+		if v.Amount != expectedAssets[v.Ticker] {
+			t.Errorf("Expected %v, got %v", expectedAssets, assets)
+		}
+	}
+	expectedPurchasesAndSales := map[string]int64{
+		"DFAC": 29,
+		"DFIC": -6,
+		"DFEM": -22,
+	}
+	for k, v := range purchasesAndSales {
+		if v != expectedPurchasesAndSales[k] {
+			t.Errorf("Expected %v, got %v", expectedPurchasesAndSales, purchasesAndSales)
+		}
 	}
 }
