@@ -72,6 +72,7 @@ func balanceAllocation(cash float64, assets []Asset, proportions map[string]floa
 	}
 	return purchases, cash, assets
 }
+
 func getAssetDeviation(asset Asset, total float64, proportion float64) float64 {
 	return math.Pow(asset.Amount*asset.Price/total-proportion, 2)
 }
