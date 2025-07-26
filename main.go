@@ -1,12 +1,68 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"io"
+	"log"
 	"math"
+	"net/http"
+	"os"
 	"sort"
+
+	"golang.org/x/oauth2"
 )
 
 func main() {
+	token := make(chan *oauth2.Token)
+	go initServer(token)
 
+	authCodeUrl := oauthConfig.AuthCodeURL("", oauth2.AccessTypeOnline)
+	fmt.Println("Authenticate here:\n" + authCodeUrl)
+
+	t := <-token
+	fmt.Println("Token received in main")
+	client := oauthConfig.Client(context.Background(), t)
+	resp, err := client.Get("https://api.schwabapi.com/trader/v1/accounts")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	io.Copy(os.Stdout, resp.Body)
+}
+
+var schwabEndpoint oauth2.Endpoint = oauth2.Endpoint{
+	AuthURL:   "https://api.schwabapi.com/v1/oauth/authorize",
+	TokenURL:  "https://api.schwabapi.com/v1/oauth/token",
+	AuthStyle: oauth2.AuthStyleInHeader,
+}
+
+var oauthConfig *oauth2.Config = &oauth2.Config{
+	RedirectURL:  "https://localhost:34970/oauth2/callback",
+	ClientID:     os.Getenv("SCHWAB_OAUTH_CLIENT_ID"),
+	ClientSecret: os.Getenv("SCHWAB_OUATH_CLIENT_SECRET"),
+	Endpoint:     schwabEndpoint,
+}
+
+func initServer(token chan *oauth2.Token) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth2/callback", func(w http.ResponseWriter, r *http.Request) {
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			http.Error(w, "No code in url", http.StatusBadRequest)
+			return
+		}
+		fmt.Println("Auth code received: " + code)
+		t, err := oauthConfig.Exchange(context.Background(), code)
+		if err != nil {
+			log.Fatal("Failed to get token: " + err.Error())
+		}
+		token <- t
+	})
+	err := http.ListenAndServe(":34970", mux)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 type Asset struct {
