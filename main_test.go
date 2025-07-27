@@ -68,20 +68,20 @@ func TestBalancePurchase(t *testing.T) {
 	tests := []struct {
 		cash                  float64
 		desiredAllocations    map[string]float64
-		prices                map[string]float64
 		holdings              map[string]int64
+		prices                map[string]float64
 		expectedPurchases     map[string]int64
 		expectedCashRemaining float64
 	}{
 		{
 			cash:               503.1,
 			desiredAllocations: alloc1,
-			prices: map[string]float64{
+			holdings: map[string]int64{
 				"DFAC": 30,
 				"DFIC": 20,
 				"DFEM": 10,
 			},
-			holdings: map[string]int64{
+			prices: map[string]float64{
 				"DFAC": 30,
 				"DFIC": 20,
 				"DFEM": 10,
@@ -94,18 +94,36 @@ func TestBalancePurchase(t *testing.T) {
 			expectedCashRemaining: 3.1,
 		},
 		{
+			cash:               999.99,
+			desiredAllocations: alloc1,
+			holdings: map[string]int64{
+				"DFAC": 55,
+				"DFIC": 27,
+				"DFEM": 9,
+			},
+			prices: map[string]float64{
+				"DFAC": 100.01,
+				"DFIC": 100.01,
+				"DFEM": 100.01,
+			},
+			expectedPurchases: map[string]int64{
+				"DFAC": 9,
+			},
+			expectedCashRemaining: 99.90,
+		},
+		{
 			cash:               1001.5,
 			desiredAllocations: alloc2,
-			prices: map[string]float64{
-				"VTI":   50,
-				"VSIAX": 20,
-				"VXUS":  20,
-				"VWO":   10,
-			},
 			holdings: map[string]int64{
 				"VTI":   10,
 				"VSIAX": 10,
 				"VXUS":  10,
+				"VWO":   10,
+			},
+			prices: map[string]float64{
+				"VTI":   50,
+				"VSIAX": 20,
+				"VXUS":  20,
 				"VWO":   10,
 			},
 			expectedPurchases: map[string]int64{
@@ -165,6 +183,26 @@ func TestRebalanceWithSelling(t *testing.T) {
 				"DFEM": -3,
 			},
 			expectedCashRemaining: 0.32,
+		},
+		{
+			cash:               0.99,
+			desiredAllocations: alloc1,
+			holdings: map[string]int64{
+				"DFAC": 170,
+				"DFIC": 5,
+				"DFEM": 25,
+			},
+			prices: map[string]float64{
+				"DFAC": 1,
+				"DFIC": 1,
+				"DFEM": 1,
+			},
+			expectedPurchasesAndSales: map[string]int64{
+				"DFAC": -42,
+				"DFIC": 49,
+				"DFEM": -7,
+			},
+			expectedCashRemaining: 0.99,
 		},
 		{
 			cash:               202.12,

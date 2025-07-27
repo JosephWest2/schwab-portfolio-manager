@@ -14,7 +14,6 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"golang.org/x/oauth2"
-	"gonum.org/v1/gonum/optimize"
 )
 
 func main() {
@@ -126,9 +125,9 @@ func purchasePriorityFunc(totalHoldingsValue float64, prices map[string]float64,
 
 // returns purchases to be made and remaining cash
 func balancePurchase(cash float64, holdings map[string]int64, prices map[string]float64, desiredAllocations map[string]float64) (map[string]int64, float64) {
-	holdingsSlice := make([]Holding, 0, len(holdings))
-	for k, v := range holdings {
-		holdingsSlice = append(holdingsSlice, Holding{k, v})
+	holdingsSlice := make([]Holding, 0, len(desiredAllocations))
+	for k := range desiredAllocations {
+		holdingsSlice = append(holdingsSlice, Holding{k, holdings[k]})
 	}
 	minPrice := math.MaxFloat64
 	for _, v := range prices {
@@ -157,59 +156,16 @@ func balancePurchase(cash float64, holdings map[string]int64, prices map[string]
 	return purchases, cash
 }
 
-// order of prices and desired Allocations should be alligned with the order of holdings
-func objectiveFuncDeviation(prices []float64, desiredAllocations []float64) func([]float64) float64 {
-	return func(holdings []float64) float64 {
-		totalHoldingsValue := 0.0
-		for i, h := range holdings {
-			totalHoldingsValue += h * prices[i]
-		}
-		deviation := 0.0
-		for i, h := range holdings {
-			deviation += math.Pow(h*prices[i]/totalHoldingsValue-desiredAllocations[i], 2)
-		}
-		return deviation
-	}
-}
-
 // returns purchases and sales to be made and remaining cash
 func rebalanceWithSelling(cash float64, holdings map[string]int64, prices map[string]float64, desiredAllocations map[string]float64) (map[string]int64, float64) {
-	if len(holdings) != len(prices) || len(holdings) != len(desiredAllocations) {
-		log.Fatal("holdings, prices, and desired allocations do not have the same length")
+	// simulate selling all stocks and buying at proper proportions
+	for k, v := range holdings {
+		cash += float64(v) * prices[k]
 	}
-
-	pricesSlice := make([]float64, 0, len(prices))
-	desiredAllocationsSlice := make([]float64, 0, len(desiredAllocations))
-	holdingsSlice := make([]float64, 0, len(holdings))
-	tickersSlice := make([]string, 0, len(holdings))
-
-	for ticker, holding := range holdings {
-		price := prices[ticker]
-		desiredAllocation := desiredAllocations[ticker]
-
-		pricesSlice = append(pricesSlice, price)
-		desiredAllocationsSlice = append(desiredAllocationsSlice, desiredAllocation)
-		holdingsSlice = append(holdingsSlice, float64(holding))
-		tickersSlice = append(tickersSlice, ticker)
-	}
-	problem := optimize.Problem{
-		Func: objectiveFuncDeviation(pricesSlice, desiredAllocationsSlice),
-	}
-	result, err := optimize.Minimize(problem, holdingsSlice, nil, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(result)
+	newHoldings, cash := balancePurchase(cash, nil, prices, desiredAllocations)
 	purchasesAndSales := make(map[string]int64, 0)
-	for i, ticker := range tickersSlice {
-		newHolding := int64(result.X[i])
-		purchasesAndSales[ticker] = newHolding - holdings[ticker]
-		cash -= float64(purchasesAndSales[ticker]) * prices[ticker]
-		holdings[ticker] = newHolding
-	}
-	purchases, cash := balancePurchase(cash, holdings, prices, desiredAllocations)
-	for k, v := range purchases {
-		purchasesAndSales[k] += v
+	for k, v := range holdings {
+		purchasesAndSales[k] = newHoldings[k] - v
 	}
 	return purchasesAndSales, cash
 }
