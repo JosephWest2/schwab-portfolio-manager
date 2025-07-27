@@ -31,8 +31,14 @@ func TestLoadAllocations(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			// Allocation sums to 0.99 not 1
+			// Allocation sums to 0.999 not 1
 			filepath: "testing/desiredAllocations_test3.yaml",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			// Allocation sums to 1.001 not 1
+			filepath: "testing/desiredAllocations_test4.yaml",
 			expected: nil,
 			wantErr:  true,
 		},
