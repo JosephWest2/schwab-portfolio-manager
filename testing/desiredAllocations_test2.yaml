@@ -1,0 +1,8 @@
+- ticker: VTI
+  proportion: 0.50
+- ticker: VSIAX
+  proportion: 0.20
+- ticker: VXUS
+  proportion: 0.20
+- ticker: VWO
+  proportion: 0.10

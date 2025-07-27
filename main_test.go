@@ -1,136 +1,197 @@
 package main
 
 import (
-	"math"
+	"reflect"
 	"testing"
 )
 
-func TestBalanceAllocation(t *testing.T) {
-	cash := 500.0
-	assets := []Asset{
-		{"DFAC", 30, 30},
-		{"DFIC", 20, 20},
-		{"DFEM", 10, 10},
+func TestLoadAllocations(t *testing.T) {
+	tests := []struct {
+		filepath string
+		expected map[string]float64
+		wantErr  bool
+	}{
+		{
+			filepath: "testing/desiredAllocations_test1.yaml",
+			expected: map[string]float64{
+				"DFAC": 0.64,
+				"DFIC": 0.27,
+				"DFEM": 0.09,
+			},
+			wantErr: false,
+		},
+		{
+			filepath: "testing/desiredAllocations_test2.yaml",
+			expected: map[string]float64{
+				"VTI":   0.50,
+				"VSIAX": 0.20,
+				"VXUS":  0.20,
+				"VWO":   0.10,
+			},
+			wantErr: false,
+		},
+		{
+			// Allocation sums to 0.99 not 1
+			filepath: "testing/desiredAllocations_test3.yaml",
+			expected: nil,
+			wantErr:  true,
+		},
 	}
-	proportions := map[string]float64{
-		"DFAC": 0.64,
-		"DFIC": 0.27,
-		"DFEM": 0.09,
-	}
-	expected := map[string]int64{
-		"DFAC": 10,
-		"DFIC": 6,
-		"DFEM": 8,
-	}
-	purchases, cash, assets := balanceAllocation(cash, assets, proportions)
-	if len(purchases) != len(expected) {
-		t.Fatalf("Expected %v, got %v", expected, purchases)
-	}
-	for k, v := range purchases {
-		if v != expected[k] {
-			t.Fatalf("Expected %v, got %v", expected, purchases)
+	for _, test := range tests {
+		allocations, err := loadDesiredAllocations(test.filepath)
+		if test.wantErr && err == nil {
+			t.Errorf("expected error on %v, got no error", test)
 		}
-	}
-	expectedTotals := map[string]float64{
-		"DFAC": 40,
-		"DFIC": 26,
-		"DFEM": 18,
-	}
-	for _, v := range assets {
-		if v.Amount != expectedTotals[v.Ticker] {
-			t.Fatalf("Expected %v, got %v", expectedTotals, assets)
-		}
-	}
-}
-
-func TestSortByPurchasePriority(t *testing.T) {
-	assets := []Asset{
-		{"DFAC", 20, 30},
-		{"DFIC", 20, 20},
-		{"DFEM", 10, 10},
-	}
-	proportions := map[string]float64{
-		"DFAC": 0.64,
-		"DFIC": 0.27,
-		"DFEM": 0.09,
-	}
-	expected := []string{"DFAC", "DFEM", "DFIC"}
-	sortByPurchasePriority(assets, proportions)
-	for i, v := range assets {
-		if v.Ticker != expected[i] {
-			t.Fatalf("Expected %v, got %v", expected, assets)
-		}
-	}
-
-	assets = []Asset{
-		{"DFAC", 30, 35},
-		{"DFIC", 20, 10},
-		{"DFEM", 20, 10},
-	}
-	proportions = map[string]float64{
-		"DFAC": 0.64,
-		"DFIC": 0.27,
-		"DFEM": 0.09,
-	}
-	expected = []string{"DFIC", "DFEM", "DFAC"}
-	sortByPurchasePriority(assets, proportions)
-	for i, v := range assets {
-		if v.Ticker != expected[i] {
-			t.Fatalf("Expected %v, got %v", expected, assets)
+		equal := reflect.DeepEqual(allocations, test.expected)
+		if !equal {
+			t.Errorf("expected %v, got %v", test.expected, allocations)
 		}
 	}
 }
 
-func TestAllocationTotal(t *testing.T) {
-	total := 0.0
-	for _, v := range tickerAllocations {
-		total += v
+func TestBalancePurchase(t *testing.T) {
+	alloc1, err := loadDesiredAllocations("testing/desiredAllocations_test1.yaml")
+	if err != nil {
+		t.Fatal("cannot continue testing TestBalancePurchase: " + err.Error())
 	}
-	if total != 1.0 {
-		t.Errorf("Allocation total should be 1.0, was %v", total)
+	alloc2, err := loadDesiredAllocations("testing/desiredAllocations_test2.yaml")
+	if err != nil {
+		t.Fatal("cannot continue testing TestBalancePurchase: " + err.Error())
 	}
-}
 
-func almostEqual(a, b, epsilon float64) bool {
-	return math.Abs(a-b) < epsilon
+	tests := []struct {
+		cash                  float64
+		desiredAllocations    map[string]float64
+		prices                map[string]float64
+		holdings              map[string]int64
+		expectedPurchases     map[string]int64
+		expectedCashRemaining float64
+	}{
+		{
+			cash:               503.1,
+			desiredAllocations: alloc1,
+			prices: map[string]float64{
+				"DFAC": 30,
+				"DFIC": 20,
+				"DFEM": 10,
+			},
+			holdings: map[string]int64{
+				"DFAC": 30,
+				"DFIC": 20,
+				"DFEM": 10,
+			},
+			expectedPurchases: map[string]int64{
+				"DFAC": 10,
+				"DFIC": 6,
+				"DFEM": 8,
+			},
+			expectedCashRemaining: 3.1,
+		},
+		{
+			cash:               1001.5,
+			desiredAllocations: alloc2,
+			prices: map[string]float64{
+				"VTI":   50,
+				"VSIAX": 20,
+				"VXUS":  20,
+				"VWO":   10,
+			},
+			holdings: map[string]int64{
+				"VTI":   10,
+				"VSIAX": 10,
+				"VXUS":  10,
+				"VWO":   10,
+			},
+			expectedPurchases: map[string]int64{
+				"VTI":   10,
+				"VSIAX": 10,
+				"VXUS":  10,
+				"VWO":   10,
+			},
+			expectedCashRemaining: 1.5,
+		},
+	}
+	for _, test := range tests {
+		purchases, cash := balancePurchase(test.cash, test.holdings, test.prices, test.desiredAllocations)
+		if !reflect.DeepEqual(purchases, test.expectedPurchases) {
+			t.Errorf("expected purchases: %v, got %v", test.expectedPurchases, purchases)
+		}
+		if !almostEqual(cash, test.expectedCashRemaining, 1e-7) {
+			t.Errorf("expected remaning cash: %v, got %v", test.expectedCashRemaining, cash)
+		}
+	}
 }
 
 func TestRebalanceWithSelling(t *testing.T) {
-	assets := []Asset{
-		{"DFAC", 30, 9.8},
-		{"DFIC", 30, 10.2},
-		{"DFEM", 30, 10.1},
+	alloc1, err := loadDesiredAllocations("testing/desiredAllocations_test1.yaml")
+	if err != nil {
+		t.Fatal("cannot continue testing TestRebalanceWithSelling: " + err.Error())
 	}
-	proportions := map[string]float64{
-		"DFAC": 0.64,
-		"DFIC": 0.27,
-		"DFEM": 0.09,
+	alloc2, err := loadDesiredAllocations("testing/desiredAllocations_test2.yaml")
+	if err != nil {
+		t.Fatal("cannot continue testing TestRebalanceWithSelling: " + err.Error())
 	}
-	cash := 5.0
-	oldSumValue := sumAssetValues(assets) + cash
-	purchasesAndSales, cash, assets := rebalanceWithSelling(cash, assets, proportions)
-	newSumValue := sumAssetValues(assets) + cash
-	if !almostEqual(oldSumValue, newSumValue, 1e-7) {
-		t.Errorf("Expected oldSumValue and newSumValue to be equal, was %v and %v", oldSumValue, newSumValue)
+
+	tests := []struct {
+		cash                      float64
+		desiredAllocations        map[string]float64
+		holdings                  map[string]int64
+		prices                    map[string]float64
+		expectedPurchasesAndSales map[string]int64
+		expectedCashRemaining     float64
+	}{
+		{
+			cash:               0.32,
+			desiredAllocations: alloc1,
+			holdings: map[string]int64{
+				"DFAC": 66,
+				"DFIC": 22,
+				"DFEM": 12,
+			},
+			prices: map[string]float64{
+				"DFAC": 1,
+				"DFIC": 1,
+				"DFEM": 1,
+			},
+			expectedPurchasesAndSales: map[string]int64{
+				"DFAC": -2,
+				"DFIC": 5,
+				"DFEM": -3,
+			},
+			expectedCashRemaining: 0.32,
+		},
+		{
+			cash:               202.12,
+			desiredAllocations: alloc2,
+			holdings: map[string]int64{
+				"VTI":   10,
+				"VSIAX": 10,
+				"VXUS":  10,
+				"VWO":   10,
+			},
+			prices: map[string]float64{
+				"VTI":   10,
+				"VSIAX": 10,
+				"VXUS":  10,
+				"VWO":   10,
+			},
+			expectedPurchasesAndSales: map[string]int64{
+				"VTI":   20,
+				"VSIAX": 2,
+				"VXUS":  2,
+				"VWO":   -4,
+			},
+			expectedCashRemaining: 2.12,
+		},
 	}
-	expectedAssets := map[string]float64{
-		"DFAC": 59,
-		"DFIC": 24,
-		"DFEM": 8,
-	}
-	for _, v := range assets {
-		if v.Amount != expectedAssets[v.Ticker] {
-			t.Errorf("Expected %v, got %v", expectedAssets, assets)
+
+	for _, test := range tests {
+		purchasesAndSales, cash := rebalanceWithSelling(test.cash, test.holdings, test.prices, test.desiredAllocations)
+		if !reflect.DeepEqual(purchasesAndSales, test.expectedPurchasesAndSales) {
+			t.Errorf("expected purchases and sales: %v, got %v", test.expectedPurchasesAndSales, purchasesAndSales)
 		}
-	}
-	expectedPurchasesAndSales := map[string]int64{
-		"DFAC": 29,
-		"DFIC": -6,
-		"DFEM": -22,
-	}
-	for k, v := range purchasesAndSales {
-		if v != expectedPurchasesAndSales[k] {
-			t.Errorf("Expected %v, got %v", expectedPurchasesAndSales, purchasesAndSales)
+		if !almostEqual(cash, test.expectedCashRemaining, 1e-7) {
+			t.Errorf("expected remaning cash: %v, got %v", test.expectedCashRemaining, cash)
 		}
 	}
 }

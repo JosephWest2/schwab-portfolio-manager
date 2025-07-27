@@ -1,16 +1,20 @@
 package main
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"math"
 	"net/http"
 	"os"
-	"sort"
+	"slices"
 
+	"github.com/goccy/go-yaml"
 	"golang.org/x/oauth2"
+	"gonum.org/v1/gonum/optimize"
 )
 
 func main() {
@@ -65,107 +69,147 @@ func initServer(token chan *oauth2.Token) {
 	}
 }
 
-type Asset struct {
-	Ticker string
-	Amount float64
-	Price  float64
+func almostEqual(a, b, epsilon float64) bool {
+	return math.Abs(a-b) < epsilon
 }
 
-var tickerAllocations map[string]float64 = map[string]float64{
-	"DFAC": 0.64,
-	"DFIC": 0.27,
-	"DFEM": 0.09,
-}
+func loadDesiredAllocations(filepath string) (map[string]float64, error) {
 
-func minAssetPrice(assets []Asset) float64 {
-	if len(assets) == 0 {
-		panic("empty asset array passed to assetMinPrice")
+	type DesiredAllocations struct {
+		Ticker     string  `yaml:"ticker"`
+		Proportion float64 `yaml:"proportion"`
 	}
-	min := assets[0].Price
-	for _, v := range assets {
-		if v.Price < min {
-			min = v.Price
+
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return nil, errors.New("failed to read allocation file: " + err.Error())
+	}
+
+	var desiredAllocations []DesiredAllocations
+
+	err = yaml.Unmarshal(data, &desiredAllocations)
+	if err != nil {
+		return nil, errors.New("failed to parse allocation file: " + err.Error())
+	}
+
+	result := make(map[string]float64, len(desiredAllocations))
+	for _, v := range desiredAllocations {
+		result[v.Ticker] = v.Proportion
+	}
+
+	sum := 0.0
+	for _, v := range result {
+		sum += v
+	}
+	if !almostEqual(sum, 1.0, 1e-7) {
+		return nil, errors.New("allocations do not sum to 1.0")
+	}
+
+	return result, err
+}
+
+type Holding struct {
+	Ticker string
+	Count  int64
+}
+
+// sort by deviation from expected proportion
+func purchasePriorityFunc(totalHoldingsValue float64, prices map[string]float64, desiredAllocations map[string]float64) func(a, b Holding) int {
+	return func(a, b Holding) int {
+		va := float64(a.Count) * prices[a.Ticker]
+		vb := float64(b.Count) * prices[b.Ticker]
+		da := va/totalHoldingsValue - desiredAllocations[a.Ticker]
+		db := vb/totalHoldingsValue - desiredAllocations[b.Ticker]
+		return cmp.Compare(da, db)
+	}
+}
+
+// returns purchases to be made and remaining cash
+func balancePurchase(cash float64, holdings map[string]int64, prices map[string]float64, desiredAllocations map[string]float64) (map[string]int64, float64) {
+	holdingsSlice := make([]Holding, 0, len(holdings))
+	for k, v := range holdings {
+		holdingsSlice = append(holdingsSlice, Holding{k, v})
+	}
+	minPrice := math.MaxFloat64
+	for _, v := range prices {
+		if v < minPrice {
+			minPrice = v
 		}
 	}
-	return min
-}
-
-func sumAssetValues(assets []Asset) float64 {
-	total := 0.0
-	for _, v := range assets {
-		total += v.Price * v.Amount
-	}
-	return total
-}
-
-func sortByPurchasePriority(assets []Asset, proportions map[string]float64) {
-	totalValue := sumAssetValues(assets)
-	sort.Slice(assets, func(i, j int) bool {
-		vi := assets[i].Amount * assets[i].Price
-		vj := assets[j].Amount * assets[j].Price
-		return vi/totalValue-proportions[assets[i].Ticker] < vj/totalValue-proportions[assets[j].Ticker]
-	})
-}
-
-// returns purchases to be made, remaining cash, and new assets
-func balanceAllocation(cash float64, assets []Asset, proportions map[string]float64) (map[string]int64, float64, []Asset) {
-	newAssets := make([]Asset, len(assets))
-	copy(newAssets, assets)
-	assets = newAssets
 	purchases := make(map[string]int64, 0)
-	minAssetPrice := minAssetPrice(assets)
-	for cash >= minAssetPrice {
-		sortByPurchasePriority(assets, proportions)
-		for i := range assets {
-			if assets[i].Price > cash {
+	for cash >= minPrice {
+		totalHoldingsValue := 0.0
+		for _, v := range holdingsSlice {
+			totalHoldingsValue += float64(v.Count) * prices[v.Ticker]
+		}
+		slices.SortFunc(holdingsSlice, purchasePriorityFunc(totalHoldingsValue, prices, desiredAllocations))
+		// buy the asset with the lowest deviation that can be afforded
+		for i, v := range holdingsSlice {
+			if prices[v.Ticker] > cash {
 				continue
 			}
-			purchases[assets[i].Ticker] += 1
-			assets[i].Amount += 1
-			cash -= assets[i].Price
+			purchases[v.Ticker] += 1
+			holdingsSlice[i].Count += 1
+			cash -= prices[v.Ticker]
 			break
 		}
 	}
-	return purchases, cash, assets
+	return purchases, cash
 }
 
-func getAssetDeviation(asset Asset, total float64, proportion float64) float64 {
-	return math.Pow(asset.Amount*asset.Price/total-proportion, 2)
-}
-
-func getAssetsDeviation(assets []Asset, proportions map[string]float64) float64 {
-	totalValue := sumAssetValues(assets)
-	deviation := 0.0
-	for _, v := range assets {
-		deviation += getAssetDeviation(v, totalValue, proportions[v.Ticker])
+// order of prices and desired Allocations should be alligned with the order of holdings
+func objectiveFuncDeviation(prices []float64, desiredAllocations []float64) func([]float64) float64 {
+	return func(holdings []float64) float64 {
+		totalHoldingsValue := 0.0
+		for i, h := range holdings {
+			totalHoldingsValue += h * prices[i]
+		}
+		deviation := 0.0
+		for i, h := range holdings {
+			deviation += math.Pow(h*prices[i]/totalHoldingsValue-desiredAllocations[i], 2)
+		}
+		return deviation
 	}
-	return deviation
 }
 
-func proposedSaleDeviation(assets []Asset, proportions map[string]float64) (string, float64, []Asset, float64) {
-	newAssets := make([]Asset, len(assets))
-	copy(newAssets, assets)
-	sortByPurchasePriority(newAssets, proportions)
-	i := len(newAssets) - 1
-	newAssets[i].Amount--
-	return newAssets[i].Ticker, newAssets[i].Price, newAssets, getAssetsDeviation(newAssets, proportions)
-}
+// returns purchases and sales to be made and remaining cash
+func rebalanceWithSelling(cash float64, holdings map[string]int64, prices map[string]float64, desiredAllocations map[string]float64) (map[string]int64, float64) {
+	if len(holdings) != len(prices) || len(holdings) != len(desiredAllocations) {
+		log.Fatal("holdings, prices, and desired allocations do not have the same length")
+	}
 
-// returns purchases to be made, remaining cash, and new assets
-func rebalanceWithSelling(cash float64, assets []Asset, proportions map[string]float64) (map[string]int64, float64, []Asset) {
-	deviation := getAssetsDeviation(assets, proportions)
+	pricesSlice := make([]float64, 0, len(prices))
+	desiredAllocationsSlice := make([]float64, 0, len(desiredAllocations))
+	holdingsSlice := make([]float64, 0, len(holdings))
+	tickersSlice := make([]string, 0, len(holdings))
+
+	for ticker, holding := range holdings {
+		price := prices[ticker]
+		desiredAllocation := desiredAllocations[ticker]
+
+		pricesSlice = append(pricesSlice, price)
+		desiredAllocationsSlice = append(desiredAllocationsSlice, desiredAllocation)
+		holdingsSlice = append(holdingsSlice, float64(holding))
+		tickersSlice = append(tickersSlice, ticker)
+	}
+	problem := optimize.Problem{
+		Func: objectiveFuncDeviation(pricesSlice, desiredAllocationsSlice),
+	}
+	result, err := optimize.Minimize(problem, holdingsSlice, nil, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(result)
 	purchasesAndSales := make(map[string]int64, 0)
-	tickerSold, cashFromSale, newAssets, newDeviation := proposedSaleDeviation(assets, proportions)
-	for newDeviation < deviation {
-		deviation = newDeviation
-		cash += cashFromSale
-		assets = newAssets
-		purchasesAndSales[tickerSold]--
-		tickerSold, cashFromSale, newAssets, newDeviation = proposedSaleDeviation(assets, proportions)
+	for i, ticker := range tickersSlice {
+		newHolding := int64(result.X[i])
+		purchasesAndSales[ticker] = newHolding - holdings[ticker]
+		cash -= float64(purchasesAndSales[ticker]) * prices[ticker]
+		holdings[ticker] = newHolding
 	}
-	purchases, cash, assets := balanceAllocation(cash, assets, proportions)
+	purchases, cash := balancePurchase(cash, holdings, prices, desiredAllocations)
 	for k, v := range purchases {
 		purchasesAndSales[k] += v
 	}
-	return purchasesAndSales, cash, assets
+	return purchasesAndSales, cash
 }
