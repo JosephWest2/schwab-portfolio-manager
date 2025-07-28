@@ -21,7 +21,7 @@ var schwabEndpoint oauth2.Endpoint = oauth2.Endpoint{
 var OauthConfig *oauth2.Config = &oauth2.Config{
 	RedirectURL:  fmt.Sprintf("https://127.0.0.1:%s/oauth2/callback", port),
 	ClientID:     os.Getenv("SCHWAB_OAUTH_CLIENT_ID"),
-	ClientSecret: os.Getenv("SCHWAB_OUATH_CLIENT_SECRET"),
+	ClientSecret: os.Getenv("SCHWAB_OAUTH_CLIENT_SECRET"),
 	Endpoint:     schwabEndpoint,
 }
 
