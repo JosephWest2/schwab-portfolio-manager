@@ -1,4 +1,4 @@
-package main
+package balance
 
 import (
 	"reflect"
@@ -44,7 +44,7 @@ func TestLoadAllocations(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		allocations, err := loadDesiredAllocations(test.filepath)
+		allocations, err := LoadDesiredAllocations(test.filepath)
 		if test.wantErr && err == nil {
 			t.Errorf("expected error on %v, got no error", test)
 		}
@@ -56,11 +56,11 @@ func TestLoadAllocations(t *testing.T) {
 }
 
 func TestBalancePurchase(t *testing.T) {
-	alloc1, err := loadDesiredAllocations("testing/desiredAllocations_test1.yaml")
+	alloc1, err := LoadDesiredAllocations("testing/desiredAllocations_test1.yaml")
 	if err != nil {
 		t.Fatal("cannot continue testing TestBalancePurchase: " + err.Error())
 	}
-	alloc2, err := loadDesiredAllocations("testing/desiredAllocations_test2.yaml")
+	alloc2, err := LoadDesiredAllocations("testing/desiredAllocations_test2.yaml")
 	if err != nil {
 		t.Fatal("cannot continue testing TestBalancePurchase: " + err.Error())
 	}
@@ -136,22 +136,22 @@ func TestBalancePurchase(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		purchases, cash := balancePurchase(test.cash, test.holdings, test.prices, test.desiredAllocations)
+		purchases, cash := BalancePurchase(test.cash, test.holdings, test.prices, test.desiredAllocations)
 		if !reflect.DeepEqual(purchases, test.expectedPurchases) {
 			t.Errorf("expected purchases: %v, got %v", test.expectedPurchases, purchases)
 		}
-		if !almostEqual(cash, test.expectedCashRemaining, 1e-7) {
+		if !AlmostEqual(cash, test.expectedCashRemaining, 1e-7) {
 			t.Errorf("expected remaning cash: %v, got %v", test.expectedCashRemaining, cash)
 		}
 	}
 }
 
 func TestRebalanceWithSelling(t *testing.T) {
-	alloc1, err := loadDesiredAllocations("testing/desiredAllocations_test1.yaml")
+	alloc1, err := LoadDesiredAllocations("testing/desiredAllocations_test1.yaml")
 	if err != nil {
 		t.Fatal("cannot continue testing TestRebalanceWithSelling: " + err.Error())
 	}
-	alloc2, err := loadDesiredAllocations("testing/desiredAllocations_test2.yaml")
+	alloc2, err := LoadDesiredAllocations("testing/desiredAllocations_test2.yaml")
 	if err != nil {
 		t.Fatal("cannot continue testing TestRebalanceWithSelling: " + err.Error())
 	}
@@ -230,11 +230,11 @@ func TestRebalanceWithSelling(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		purchasesAndSales, cash := rebalanceWithSelling(test.cash, test.holdings, test.prices, test.desiredAllocations)
+		purchasesAndSales, cash := RebalanceWithSelling(test.cash, test.holdings, test.prices, test.desiredAllocations)
 		if !reflect.DeepEqual(purchasesAndSales, test.expectedPurchasesAndSales) {
 			t.Errorf("expected purchases and sales: %v, got %v", test.expectedPurchasesAndSales, purchasesAndSales)
 		}
-		if !almostEqual(cash, test.expectedCashRemaining, 1e-7) {
+		if !AlmostEqual(cash, test.expectedCashRemaining, 1e-7) {
 			t.Errorf("expected remaning cash: %v, got %v", test.expectedCashRemaining, cash)
 		}
 	}

@@ -1,0 +1,3 @@
+setup:
+  - project: schwab-portfolio-manager
+    config: prd
