@@ -26,7 +26,7 @@ var OauthConfig *oauth2.Config = &oauth2.Config{
 }
 
 // server to handle the callback after authentication
-func InitCallbackServer(tokenChan chan *oauth2.Token) {
+func InitAuthCallbackServer(tokenChan chan *oauth2.Token) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/oauth2/callback", func(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +43,7 @@ func InitCallbackServer(tokenChan chan *oauth2.Token) {
 		tokenChan <- token
 	})
 
+	fmt.Println("Auth callback server starting")
 	err := http.ListenAndServeTLS(":"+port, "127.0.0.1.pem", "127.0.0.1-key.pem", mux)
 	if err != nil {
 		log.Fatal(err)

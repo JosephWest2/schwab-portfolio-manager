@@ -13,7 +13,7 @@ import (
 
 func main() {
 	tokenChan := make(chan *oauth2.Token)
-	go server.InitCallbackServer(tokenChan)
+	go server.InitAuthCallbackServer(tokenChan)
 
 	authCodeUrl := server.OauthConfig.AuthCodeURL("", oauth2.AccessTypeOnline)
 	fmt.Println("Authenticate here:\n" + authCodeUrl)
