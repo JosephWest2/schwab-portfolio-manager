@@ -16,7 +16,7 @@ func main() {
 	go server.InitAuthCallbackServer(tokenChan)
 
 	authCodeUrl := server.OauthConfig.AuthCodeURL("", oauth2.AccessTypeOnline)
-	fmt.Println("Authenticate here:\n" + authCodeUrl)
+	fmt.Fprintf(os.Stdout, "\nAuthenticate here:\n\n%v\n\n", authCodeUrl)
 
 	token := <-tokenChan
 	fmt.Println("Token received in main")

@@ -43,7 +43,6 @@ func InitAuthCallbackServer(tokenChan chan *oauth2.Token) {
 		tokenChan <- token
 	})
 
-	fmt.Println("Auth callback server starting")
 	err := http.ListenAndServeTLS(":"+port, "127.0.0.1.pem", "127.0.0.1-key.pem", mux)
 	if err != nil {
 		log.Fatal(err)
