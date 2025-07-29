@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+var EncryptedTokenFilename = "token.txt"
+
 func EncryptToFile(data []byte, filepath string) error {
 	aesKey := os.Getenv("SCWHWAB_APP_AES_GCM_KEY")
 	if aesKey == "" {
