@@ -16,7 +16,9 @@ import (
 )
 
 func main() {
-	client := InitClient()
+	tokenChan := make(chan *oauth2.Token)
+	go server.InitAuthCallbackServer(tokenChan)
+	client := InitClient(tokenChan)
 	resp, err := client.Get("https://api.schwabapi.com/trader/v1/accounts")
 	if err != nil {
 		log.Fatal(err)
@@ -80,9 +82,7 @@ func ReadTokenFromFile() (*oauth2.Token, error) {
 	return token, nil
 }
 
-func Authenticate() *http.Client {
-	tokenChan := make(chan *oauth2.Token)
-	go server.InitAuthCallbackServer(tokenChan)
+func Authenticate(tokenChan chan *oauth2.Token) *http.Client {
 
 	authCodeUrl := server.OauthConfig.AuthCodeURL("", oauth2.AccessTypeOnline)
 	fmt.Fprintf(os.Stdout, "\nAuthenticate here:\n\n%v\n\n", authCodeUrl)
@@ -103,11 +103,11 @@ func CreateClientFromTokenFile() (*http.Client, error) {
 	return oauth2.NewClient(context.Background(), hookedTokenSource), nil
 }
 
-func InitClient() *http.Client {
+func InitClient(tokenChan chan *oauth2.Token) *http.Client {
 	client, err := CreateClientFromTokenFile()
 	if err != nil {
 		fmt.Println(err)
-		client = Authenticate()
+		client = Authenticate(tokenChan)
 	}
 	return client
 }

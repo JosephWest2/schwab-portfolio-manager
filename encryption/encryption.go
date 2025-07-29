@@ -10,9 +10,9 @@ import (
 var EncryptedTokenFilename = "token.txt"
 
 func EncryptToFile(data []byte, filepath string) error {
-	aesKey := os.Getenv("SCWHWAB_APP_AES_GCM_KEY")
+	aesKey := os.Getenv("SCHWAB_APP_AES_GCM_KEY")
 	if aesKey == "" {
-		log.Fatal("SCWHWAB_APP_AES_GCM_KEY not set")
+		log.Fatal("SCHWAB_APP_AES_GCM_KEY not set")
 	}
 
 	block, err := aes.NewCipher([]byte(aesKey))
@@ -30,9 +30,9 @@ func EncryptToFile(data []byte, filepath string) error {
 }
 
 func DecryptFromFile(filepath string) ([]byte, error) {
-	aesKey := os.Getenv("SCWHWAB_APP_AES_GCM_KEY")
+	aesKey := os.Getenv("SCHWAB_APP_AES_GCM_KEY")
 	if aesKey == "" {
-		log.Fatal("SCWHWAB_APP_AES_GCM_KEY not set")
+		log.Fatal("SCHWAB_APP_AES_GCM_KEY not set")
 	}
 
 	block, err := aes.NewCipher([]byte(aesKey))

@@ -45,7 +45,8 @@ func InitAuthCallbackServer(tokenChan chan *oauth2.Token) {
 			log.Fatal("Failed to get token: " + err.Error())
 		}
 		tokenChan <- token
-		server.Shutdown(context.Background())
+
+		w.Write([]byte("Authentication successful, you can close this window and return to the application."))
 	})
 
 	err := server.ListenAndServeTLS("127.0.0.1.pem", "127.0.0.1-key.pem")

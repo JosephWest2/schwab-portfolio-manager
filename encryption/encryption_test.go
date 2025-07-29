@@ -6,9 +6,9 @@ import (
 )
 
 func TestEncryption(t *testing.T) {
-	os.Setenv("SCWHWAB_APP_AES_GCM_KEY", "12345678901234567890123456789012")
+	os.Setenv("SCHWAB_APP_AES_GCM_KEY", "12345678901234567890123456789012")
 	t.Cleanup(func() {
-		os.Unsetenv("SCWHWAB_APP_AES_GCM_KEY")
+		os.Unsetenv("SCHWAB_APP_AES_GCM_KEY")
 	})
 	tests := []struct {
 		input    string
