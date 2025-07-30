@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-var EncryptedTokenFilename = "token.txt"
+var EncryptedTokenFilename = "token.enc"
 
 func EncryptToFile(data []byte, filepath string) error {
 	aesKey := os.Getenv("SCHWAB_APP_AES_GCM_KEY")

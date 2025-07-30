@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -12,6 +13,8 @@ import (
 	"github.com/josephwest2/schwab-portfolio-manager/schwabTypes"
 	"golang.org/x/oauth2"
 )
+
+const SchwabTraderApiAddress = "https://api.schwabapi.com/trader/v1/"
 
 type Account struct {
 	SecuritiesAccount schwabTypes.SecuritiesAccount
@@ -88,8 +91,7 @@ func MainOptions(a *App) AppHandler {
 
 func InvestCashSelectAccount(a *App) AppHandler {
 	for i, acc := range a.accounts {
-		fmt.Fprintf(os.Stdout, "\n#%v\n\n", i+1)
-		fmt.Fprintf(os.Stdout, "********%v\n", acc.SecuritiesAccount.AccountNumber[len(acc.SecuritiesAccount.AccountNumber)-3:])
+		fmt.Fprintf(os.Stdout, "\n#%v ********%v\n", i+1, acc.SecuritiesAccount.AccountNumber[len(acc.SecuritiesAccount.AccountNumber)-3:])
 		fmt.Fprintf(os.Stdout, "Account value: $%v\n", acc.SecuritiesAccount.InitialBalances.AccountValue)
 		fmt.Fprintf(os.Stdout, "Cash: $%v\n", acc.SecuritiesAccount.InitialBalances.CashBalance)
 	}
@@ -153,7 +155,7 @@ func InvestCash(a *App, account *Account) AppHandler {
 		}
 		fmt.Fprintf(os.Stdout, "Resulting cash: $%v\n\n", cash)
 
-		fmt.Println("type \"proceed\" to execute the trades, anything else to cancel")
+		fmt.Println("type \"proceed\" to place the orders, anything else to cancel")
 
 		for {
 			var input string
@@ -162,14 +164,52 @@ func InvestCash(a *App, account *Account) AppHandler {
 				fmt.Println("invalid input", err)
 				continue
 			}
-
 			if input == "proceed" {
-				fmt.Println("This would have executed trades :)")
-				return MainOptions
+				return PlaceOrders(a, account, purchases)
 			} else {
 				return MainOptions
 			}
 		}
+	}
+}
+
+func PlaceOrders(a *App, account *Account, orders map[string]int64) AppHandler {
+	return func(a *App) AppHandler {
+		for ticker, count := range orders {
+			order := schwabTypes.Order{
+				OrderType:         "MARKET",
+				Session:           "NORMAL",
+				Duration:          "DAY",
+				OrderStrategyType: "SINGLE",
+				OrderLegCollection: []schwabTypes.OrderLeg{
+					{
+						Instruction: "BUY",
+						Quantity:    float64(count),
+						Instrument: schwabTypes.Instrument{
+							Symbol:    ticker,
+							AssetType: "EQUITY",
+						},
+					},
+				},
+			}
+			orderData, err := json.Marshal(order)
+			if err != nil {
+				log.Fatal(err)
+			}
+			resp, err := a.client.Post(
+				SchwabTraderApiAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
+				"application/json",
+				bytes.NewBuffer(orderData),
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if resp.StatusCode != 200 {
+				log.Fatal("Failed to place order", resp.Body)
+			}
+		}
+
+		return MainOptions
 	}
 }
 
@@ -186,7 +226,7 @@ func PrintAccounts(a *App) AppHandler {
 }
 
 func (a *App) GetAccounts() ([]Account, error) {
-	resp, err := a.client.Get("https://api.schwabapi.com/trader/v1/accounts/accountNumbers")
+	resp, err := a.client.Get(SchwabTraderApiAddress + "accounts/accountNumbers")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -203,7 +243,7 @@ func (a *App) GetAccounts() ([]Account, error) {
 
 	var res []Account
 	for _, acc := range accounts {
-		resp, err := a.client.Get("https://api.schwabapi.com/trader/v1/accounts/" + acc.HashValue + "?fields=positions")
+		resp, err := a.client.Get(SchwabTraderApiAddress + "accounts/" + acc.HashValue + "?fields=positions")
 		if err != nil {
 			log.Fatal(err)
 		}

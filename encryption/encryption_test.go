@@ -16,7 +16,7 @@ func TestEncryption(t *testing.T) {
 	}{
 		{
 			input:    "1234",
-			filename: "test.txt",
+			filename: "testToken.enc",
 		},
 	}
 	for _, test := range tests {
