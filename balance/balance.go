@@ -10,6 +10,8 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+var DesiredAllocationsFile = "desiredAllocations.yaml"
+
 func AlmostEqual(a, b, epsilon float64) bool {
 	return math.Abs(a-b) < epsilon
 }
@@ -51,7 +53,7 @@ func LoadDesiredAllocations(filepath string) (map[string]float64, error) {
 
 type Holding struct {
 	Ticker string
-	Count  int64
+	Count  float64
 }
 
 // sort by deviation from expected proportion
@@ -66,7 +68,7 @@ func PurchasePriorityFunc(totalHoldingsValue float64, prices map[string]float64,
 }
 
 // returns purchases to be made and remaining cash
-func BalancePurchase(cash float64, holdings map[string]int64, prices map[string]float64, desiredAllocations map[string]float64) (map[string]int64, float64) {
+func BalancePurchase(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations map[string]float64) (map[string]int64, float64) {
 	holdingsSlice := make([]Holding, 0, len(desiredAllocations))
 	for k := range desiredAllocations {
 		holdingsSlice = append(holdingsSlice, Holding{k, holdings[k]})

@@ -82,7 +82,7 @@ type BalancesInitial struct {
 	ShortOptionMarketValue           float64 `json:"shortOptionMarketValue"`
 	ShortStockValue                  float64 `json:"shortStockValue"`
 	TotalCash                        float64 `json:"totalCash"`
-	IsInCall                         float64 `json:"isInCall"`
+	IsInCall                         bool    `json:"isInCall"`
 	UnsettledCash                    float64 `json:"unsettledCash"`
 	PendingDeposits                  float64 `json:"pendingDeposits"`
 	MarginBalance                    float64 `json:"marginBalance"`

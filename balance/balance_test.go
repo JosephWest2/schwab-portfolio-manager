@@ -68,7 +68,7 @@ func TestBalancePurchase(t *testing.T) {
 	tests := []struct {
 		cash                  float64
 		desiredAllocations    map[string]float64
-		holdings              map[string]int64
+		holdings              map[string]float64
 		prices                map[string]float64
 		expectedPurchases     map[string]int64
 		expectedCashRemaining float64
@@ -76,7 +76,7 @@ func TestBalancePurchase(t *testing.T) {
 		{
 			cash:               503.1,
 			desiredAllocations: alloc1,
-			holdings: map[string]int64{
+			holdings: map[string]float64{
 				"DFAC": 30,
 				"DFIC": 20,
 				"DFEM": 10,
@@ -96,7 +96,7 @@ func TestBalancePurchase(t *testing.T) {
 		{
 			cash:               999.99,
 			desiredAllocations: alloc1,
-			holdings: map[string]int64{
+			holdings: map[string]float64{
 				"DFAC": 55,
 				"DFIC": 27,
 				"DFEM": 9,
@@ -114,7 +114,7 @@ func TestBalancePurchase(t *testing.T) {
 		{
 			cash:               1001.5,
 			desiredAllocations: alloc2,
-			holdings: map[string]int64{
+			holdings: map[string]float64{
 				"VTI":   10,
 				"VSIAX": 10,
 				"VXUS":  10,
