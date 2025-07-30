@@ -21,6 +21,7 @@ func LoadDesiredAllocations(filepath string) (map[string]float64, error) {
 	type DesiredAllocations struct {
 		Ticker     string  `yaml:"ticker"`
 		Proportion float64 `yaml:"proportion"`
+		FixedAmount float64 `yaml:"fixedAmount"`
 	}
 
 	data, err := os.ReadFile(filepath)
