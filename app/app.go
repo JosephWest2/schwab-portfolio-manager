@@ -219,13 +219,13 @@ func InvestCash(a *App, account *Account) AppHandler {
 
 		fmt.Printf("Curent positions:\n")
 		for _, pos := range positions {
-			proportion := pos.LongQuantity / account.SecuritiesAccount.InitialBalances.AccountValue
+			proportion := pos.MarketValue / account.SecuritiesAccount.InitialBalances.AccountValue
 			fmt.Fprintf(os.Stdout, "%v: %v shares, $%v, %v%%\n", pos.Instrument.Symbol, pos.LongQuantity, pos.MarketValue, proportion*100)
 			if desiredAllocations[pos.Instrument.Symbol] == 0 {
 				fmt.Fprintf(os.Stdout, "No desired allocation for %v\n", pos.Instrument.Symbol)
 			}
 			holdings[pos.Instrument.Symbol] = pos.LongQuantity
-			prices[pos.Instrument.Symbol] = pos.CurrentDayCost
+			prices[pos.Instrument.Symbol] = pos.AveragePrice
 
 			fmt.Println()
 		}
@@ -251,6 +251,8 @@ func InvestCash(a *App, account *Account) AppHandler {
 
 			if input == "proceed" {
 				fmt.Println("This would have executed trades :)")
+				return MainOptions
+			} else {
 				return MainOptions
 			}
 		}
@@ -287,7 +289,7 @@ func (a *App) GetAccounts() ([]Account, error) {
 
 	var res []Account
 	for _, acc := range accounts {
-		resp, err := a.client.Get("https://api.schwabapi.com/trader/v1/accounts/" + acc.HashValue)
+		resp, err := a.client.Get("https://api.schwabapi.com/trader/v1/accounts/" + acc.HashValue + "?fields=positions")
 		if err != nil {
 			log.Fatal(err)
 		}
