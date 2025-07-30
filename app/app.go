@@ -10,7 +10,6 @@ import (
 	"github.com/josephwest2/schwab-portfolio-manager/auth"
 	"github.com/josephwest2/schwab-portfolio-manager/balance"
 	"github.com/josephwest2/schwab-portfolio-manager/schwabTypes"
-	"github.com/josephwest2/schwab-portfolio-manager/server"
 	"golang.org/x/oauth2"
 )
 
@@ -22,6 +21,7 @@ type Account struct {
 type App struct {
 	client    *http.Client
 	tokenChan chan *oauth2.Token
+	stateChan chan string
 	accounts  []Account
 	next      AppHandler
 }
@@ -36,14 +36,14 @@ func NewApp() *App {
 }
 
 func (a *App) Run() {
-	go server.InitAuthCallbackServer(a.tokenChan)
-	a.client = auth.InitClient(a.tokenChan)
+	go auth.InitAuthCallbackServer(a.tokenChan, a.stateChan)
+	a.client = auth.InitClient(a.tokenChan, a.stateChan)
 
 	for a.accounts == nil {
 		accounts, err := a.GetAccounts()
 		if err != nil {
 			if err == auth.ErrUnauthorized {
-				a.client = auth.Authenticate(a.tokenChan)
+				a.client = auth.Authenticate(a.tokenChan, a.stateChan)
 			} else {
 				log.Fatal(err)
 			}
