@@ -6,3 +6,5 @@
   proportion: 0.20
 - ticker: VWO
   proportion: 0.10
+- ticker: SWVXX
+  fixedCashAmount: 4000

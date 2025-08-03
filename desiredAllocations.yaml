@@ -5,4 +5,4 @@
 - ticker: DFEM
   proportion: 0.09
 - ticker: SWVXX
-  fixedAmount: 4000
+  fixedCashAmount: 4000

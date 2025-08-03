@@ -134,7 +134,7 @@ func InvestCash(a *App, account *Account) AppHandler {
 		for _, pos := range positions {
 			proportion := pos.MarketValue / account.SecuritiesAccount.InitialBalances.AccountValue
 			fmt.Fprintf(os.Stdout, "%v: %v shares, $%v, %v%%\n", pos.Instrument.Symbol, pos.LongQuantity, pos.MarketValue, proportion*100)
-			if desiredAllocations[pos.Instrument.Symbol] == 0 {
+			if desiredAllocations.Proportions[pos.Instrument.Symbol] == 0 || desiredAllocations.FixedCashAmounts[pos.Instrument.Symbol] == 0 {
 				fmt.Fprintf(os.Stdout, "No desired allocation for %v\n", pos.Instrument.Symbol)
 			}
 			holdings[pos.Instrument.Symbol] = pos.LongQuantity

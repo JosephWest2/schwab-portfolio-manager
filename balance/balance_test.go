@@ -8,25 +8,35 @@ import (
 func TestLoadAllocations(t *testing.T) {
 	tests := []struct {
 		filepath string
-		expected map[string]float64
+		expected *DesiredAllocations
 		wantErr  bool
 	}{
 		{
 			filepath: "testing/desiredAllocations_test1.yaml",
-			expected: map[string]float64{
-				"DFAC": 0.64,
-				"DFIC": 0.27,
-				"DFEM": 0.09,
+			expected: &DesiredAllocations{
+				Proportions: map[string]float64{
+					"DFAC": 0.64,
+					"DFIC": 0.27,
+					"DFEM": 0.09,
+				},
+				FixedCashAmounts: map[string]float64{
+					"SWVXX": 4000,
+				},
 			},
 			wantErr: false,
 		},
 		{
 			filepath: "testing/desiredAllocations_test2.yaml",
-			expected: map[string]float64{
-				"VTI":   0.50,
-				"VSIAX": 0.20,
-				"VXUS":  0.20,
-				"VWO":   0.10,
+			expected: &DesiredAllocations{
+				Proportions: map[string]float64{
+					"VTI":   0.50,
+					"VSIAX": 0.20,
+					"VXUS":  0.20,
+					"VWO":   0.10,
+				},
+				FixedCashAmounts: map[string]float64{
+					"SWVXX": 4000,
+				},
 			},
 			wantErr: false,
 		},
@@ -67,7 +77,7 @@ func TestBalancePurchase(t *testing.T) {
 
 	tests := []struct {
 		cash                  float64
-		desiredAllocations    map[string]float64
+		desiredAllocations    *DesiredAllocations
 		holdings              map[string]float64
 		prices                map[string]float64
 		expectedPurchases     map[string]int64
@@ -77,60 +87,69 @@ func TestBalancePurchase(t *testing.T) {
 			cash:               503.1,
 			desiredAllocations: alloc1,
 			holdings: map[string]float64{
-				"DFAC": 30,
-				"DFIC": 20,
-				"DFEM": 10,
+				"DFAC":  30,
+				"DFIC":  20,
+				"DFEM":  10,
+				"SWVXX": 3998,
 			},
 			prices: map[string]float64{
-				"DFAC": 30,
-				"DFIC": 20,
-				"DFEM": 10,
+				"DFAC":  30,
+				"DFIC":  20,
+				"DFEM":  10,
+				"SWVXX": 1,
 			},
 			expectedPurchases: map[string]int64{
-				"DFAC": 10,
-				"DFIC": 6,
-				"DFEM": 8,
+				"DFAC":  10,
+				"DFIC":  6,
+				"DFEM":  8,
+				"SWVXX": 2,
 			},
-			expectedCashRemaining: 3.1,
+			expectedCashRemaining: 1.1,
 		},
 		{
 			cash:               999.99,
 			desiredAllocations: alloc1,
 			holdings: map[string]float64{
-				"DFAC": 55,
-				"DFIC": 27,
-				"DFEM": 9,
+				"DFAC":  55,
+				"DFIC":  27,
+				"DFEM":  9,
+				"SWVXX": 3996,
 			},
 			prices: map[string]float64{
-				"DFAC": 100.01,
-				"DFIC": 100.01,
-				"DFEM": 100.01,
+				"DFAC":  100.01,
+				"DFIC":  100.01,
+				"DFEM":  100.01,
+				"SWVXX": 1,
 			},
 			expectedPurchases: map[string]int64{
-				"DFAC": 9,
+				"DFAC":  9,
+				"SWVXX": 4,
 			},
-			expectedCashRemaining: 99.90,
+			expectedCashRemaining: 95.90,
 		},
 		{
-			cash:               1001.5,
+			cash:               1501.5,
 			desiredAllocations: alloc2,
 			holdings: map[string]float64{
 				"VTI":   10,
 				"VSIAX": 10,
 				"VXUS":  10,
 				"VWO":   10,
+				"SWVXX": 3500,
 			},
 			prices: map[string]float64{
 				"VTI":   50,
 				"VSIAX": 20,
 				"VXUS":  20,
 				"VWO":   10,
+				"SWVXX": 1,
 			},
 			expectedPurchases: map[string]int64{
 				"VTI":   10,
 				"VSIAX": 10,
 				"VXUS":  10,
 				"VWO":   10,
+				"SWVXX": 500,
 			},
 			expectedCashRemaining: 1.5,
 		},
@@ -158,7 +177,7 @@ func TestRebalanceWithSelling(t *testing.T) {
 
 	tests := []struct {
 		cash                      float64
-		desiredAllocations        map[string]float64
+		desiredAllocations        *DesiredAllocations
 		holdings                  map[string]int64
 		prices                    map[string]float64
 		expectedPurchasesAndSales map[string]int64
