@@ -193,6 +193,8 @@ func PlaceOrders(a *App, account *Account, orders map[string]int64) AppHandler {
 				},
 			}
 			orderData, err := json.Marshal(order)
+			fmt.Println("serialized order", string(orderData))
+			return MainOptions
 			if err != nil {
 				log.Fatal(err)
 			}
