@@ -39,14 +39,14 @@ func NewApp() *App {
 }
 
 func (a *App) Run() {
-	go auth.InitAuthCallbackServer(a.tokenChan, a.stateChan)
+	go auth.InitAuthCallbackServer(a.tokenChan)
 	a.client = auth.InitClient(a.tokenChan, a.stateChan)
 
 	for a.accounts == nil {
 		accounts, err := a.GetAccounts()
 		if err != nil {
 			if err == auth.ErrUnauthorized {
-				a.client = auth.Authenticate(a.tokenChan, a.stateChan)
+				a.client = auth.Authenticate(a.tokenChan)
 			} else {
 				log.Fatal(err)
 			}
@@ -127,23 +127,23 @@ func InvestCash(a *App, account *Account) AppHandler {
 			return MainOptions
 		}
 
-		holdings := make(map[string]float64)
-		prices := make(map[string]float64)
+		trackedHoldings := make(map[string]float64)
+		trackedPrices := make(map[string]float64)
 
 		fmt.Printf("Curent positions:\n")
 		for _, pos := range positions {
 			proportion := pos.MarketValue / account.SecuritiesAccount.InitialBalances.AccountValue
-			fmt.Fprintf(os.Stdout, "%v: %v shares, $%v, %v%%\n", pos.Instrument.Symbol, pos.LongQuantity, pos.MarketValue, proportion*100)
-			if desiredAllocations.Proportions[pos.Instrument.Symbol] == 0 || desiredAllocations.FixedCashAmounts[pos.Instrument.Symbol] == 0 {
+			fmt.Fprintf(os.Stdout, "%v: %v shares, $%.2f, %.2f%%\n", pos.Instrument.Symbol, pos.LongQuantity, pos.MarketValue, proportion*100)
+			if desiredAllocations.Proportions[pos.Instrument.Symbol] == 0 && desiredAllocations.FixedCashAmounts[pos.Instrument.Symbol] == 0 {
 				fmt.Fprintf(os.Stdout, "No desired allocation for %v\n", pos.Instrument.Symbol)
+			} else {
+				trackedHoldings[pos.Instrument.Symbol] = pos.LongQuantity
+				trackedPrices[pos.Instrument.Symbol] = pos.AveragePrice
 			}
-			holdings[pos.Instrument.Symbol] = pos.LongQuantity
-			prices[pos.Instrument.Symbol] = pos.AveragePrice
-
 			fmt.Println()
 		}
 
-		purchases, cash := balance.BalancePurchase(cash, holdings, prices, desiredAllocations)
+		purchases, cash := balance.BalancePurchase(cash, trackedHoldings, trackedPrices, desiredAllocations)
 
 		if len(purchases) == 0 {
 			fmt.Println("Not enough cash to make any purchases")

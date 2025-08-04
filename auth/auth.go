@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,7 +30,7 @@ var OauthConfig *oauth2.Config = &oauth2.Config{
 }
 
 // server to handle the callback after authentication
-func InitAuthCallbackServer(tokenChan chan *oauth2.Token, stateChan chan string) {
+func InitAuthCallbackServer(tokenChan chan *oauth2.Token) {
 	mux := http.NewServeMux()
 	server := &http.Server{
 		Addr:    ":" + port,
@@ -39,13 +38,7 @@ func InitAuthCallbackServer(tokenChan chan *oauth2.Token, stateChan chan string)
 	}
 
 	mux.HandleFunc("/oauth2/callback", func(w http.ResponseWriter, r *http.Request) {
-		stateRecv := <-stateChan
 		code := r.URL.Query().Get("code")
-		state := r.URL.Query().Get("state")
-		if state != stateRecv {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
 		if code == "" {
 			http.Error(w, "No code in url", http.StatusBadRequest)
 			return
@@ -123,16 +116,10 @@ func ReadTokenFromFile() (*oauth2.Token, error) {
 	return token, nil
 }
 
-func Authenticate(tokenChan chan *oauth2.Token, stateChan chan string) *http.Client {
-	state := make([]byte, 16)
-	_, err := rand.Read(state)
-	if err != nil {
-		log.Fatal(err)
-	}
-	authCodeUrl := OauthConfig.AuthCodeURL(string(state), oauth2.AccessTypeOnline)
+func Authenticate(tokenChan chan *oauth2.Token) *http.Client {
+	authCodeUrl := OauthConfig.AuthCodeURL("", oauth2.AccessTypeOnline)
 	fmt.Fprintf(os.Stdout, "\nAuthenticate here:\n\n%v\n\n", authCodeUrl)
 
-	stateChan <- string(state)
 	token := <-tokenChan
 
 	hookedTokenSource := NewHookedTokenSource(token)
@@ -153,7 +140,7 @@ func InitClient(tokenChan chan *oauth2.Token, stateChan chan string) *http.Clien
 	client, err := CreateClientFromTokenFile()
 	if err != nil {
 		fmt.Println(err)
-		client = Authenticate(tokenChan, stateChan)
+		client = Authenticate(tokenChan)
 	}
 	return client
 }
