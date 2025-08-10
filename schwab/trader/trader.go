@@ -155,7 +155,7 @@ type Order struct {
 	AccountNumber            int64           `json:"accountNumber,omitempty"`
 	OrderActivityCollection  []OrderActivity `json:"orderActivityCollection,omitempty"`
 	ReplacingOrderCollection []string        `json:"replacingOrderCollection,omitempty"`
-	ChildOrderStrategies     []string        `json:"childOrderStrategies,omitempty"`
+	ChildOrderStrategies     []Order         `json:"childOrderStrategies,omitempty"`
 	StatusDescription        string          `json:"statusDescription,omitempty"`
 }
 

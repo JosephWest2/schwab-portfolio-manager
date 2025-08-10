@@ -1,4 +1,4 @@
-package marketdata
+package marketData
 
 type QuoteResponse map[string]Instrument
 

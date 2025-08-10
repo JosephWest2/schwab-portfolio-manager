@@ -11,7 +11,7 @@ import (
 
 	"github.com/josephwest2/schwab-portfolio-manager/auth"
 	"github.com/josephwest2/schwab-portfolio-manager/balance"
-	marketData "github.com/josephwest2/schwab-portfolio-manager/schwab/marketData"
+	"github.com/josephwest2/schwab-portfolio-manager/schwab/marketData"
 	"github.com/josephwest2/schwab-portfolio-manager/schwab/trader"
 	"golang.org/x/oauth2"
 )
@@ -178,7 +178,7 @@ func InvestCash(a *App, account *Account) AppHandler {
 				continue
 			}
 			if input == "proceed" {
-				return PlacePurchaseOrders(a, account, purchases)
+				return PlaceBuyOrder(a, account, purchases)
 			} else {
 				return MainOptions
 			}
@@ -202,7 +202,6 @@ func GetAssetPrices(a *App, tickers []string) map[string]float64 {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(quoteResponse)
 
 	prices := make(map[string]float64)
 	for _, data := range quoteResponse {
@@ -211,7 +210,59 @@ func GetAssetPrices(a *App, tickers []string) map[string]float64 {
 	return prices
 }
 
-func PlacePurchaseOrders(a *App, account *Account, orders map[string]int64) AppHandler {
+func PlaceTriggerOrder(a *App, account *Account, orders map[string]int64) AppHandler {
+	return func(a *App) AppHandler {
+		order := trader.Order{
+			OrderType:          "MARKET",
+			Session:            "NORMAL",
+			Duration:           "DAY",
+			Cancelable:         true,
+			OrderStrategyType:  "TRIGGER",
+			OrderLegCollection: make([]trader.OrderLeg, 0),
+			ChildOrderStrategies: []trader.Order{
+				{
+					OrderType:          "MARKET",
+					Cancelable: true,
+					Session:            "NORMAL",
+					Duration:           "DAY",
+					OrderStrategyType:  "SINGLE",
+					OrderLegCollection: make([]trader.OrderLeg, 0),
+				},
+			},
+		}
+		for ticker, count := range orders {
+			if count < 0 {
+				order.OrderLegCollection = append(order.OrderLegCollection, trader.OrderLeg{
+					Instruction: "SELL",
+					Quantity:    float64(-count),
+					Instrument: trader.Instrument{
+						Symbol:    ticker,
+						AssetType: "EQUITY",
+					},
+				})
+			} else if count > 0 {
+				order.ChildOrderStrategies[0].OrderLegCollection = append(order.ChildOrderStrategies[0].OrderLegCollection, trader.OrderLeg{
+					Instruction: "BUY",
+					Quantity:    float64(count),
+					Instrument: trader.Instrument{
+						Symbol:    ticker,
+						AssetType: "EQUITY",
+					},
+				})
+			}
+		}
+
+		orderData, err := json.Marshal(order)
+		fmt.Println("serialized order", string(orderData))
+		if err != nil {
+			log.Fatal(err)
+		}
+		return MainOptions
+	}
+
+}
+
+func PlaceBuyOrder(a *App, account *Account, orders map[string]int64) AppHandler {
 	return func(a *App) AppHandler {
 		for ticker, count := range orders {
 			if count < 1 {
@@ -221,6 +272,7 @@ func PlacePurchaseOrders(a *App, account *Account, orders map[string]int64) AppH
 				OrderType:         "MARKET",
 				Session:           "NORMAL",
 				Duration:          "DAY",
+				Cancelable: true,
 				OrderStrategyType: "SINGLE",
 				OrderLegCollection: []trader.OrderLeg{
 					{
@@ -235,10 +287,10 @@ func PlacePurchaseOrders(a *App, account *Account, orders map[string]int64) AppH
 			}
 			orderData, err := json.Marshal(order)
 			fmt.Println("serialized order", string(orderData))
-			return MainOptions
 			if err != nil {
 				log.Fatal(err)
 			}
+			return MainOptions
 			resp, err := a.client.Post(
 				SchwabTraderApiAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
 				"application/json",
