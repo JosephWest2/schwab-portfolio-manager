@@ -7,17 +7,20 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/josephwest2/schwab-portfolio-manager/auth"
 	"github.com/josephwest2/schwab-portfolio-manager/balance"
-	"github.com/josephwest2/schwab-portfolio-manager/schwabTypes"
+	marketData "github.com/josephwest2/schwab-portfolio-manager/schwab/marketData"
+	"github.com/josephwest2/schwab-portfolio-manager/schwab/trader"
 	"golang.org/x/oauth2"
 )
 
 const SchwabTraderApiAddress = "https://api.schwabapi.com/trader/v1/"
+const SchwabMarketDataApiAddress = "https://api.schwabapi.com/marketdata/v1/"
 
 type Account struct {
-	SecuritiesAccount schwabTypes.SecuritiesAccount
+	SecuritiesAccount trader.SecuritiesAccount
 	AccountHashValue  string
 }
 
@@ -128,7 +131,6 @@ func InvestCash(a *App, account *Account) AppHandler {
 		}
 
 		trackedHoldings := make(map[string]float64)
-		trackedPrices := make(map[string]float64)
 
 		fmt.Printf("Curent positions:\n")
 		for _, pos := range positions {
@@ -138,10 +140,21 @@ func InvestCash(a *App, account *Account) AppHandler {
 				fmt.Fprintf(os.Stdout, "No desired allocation for %v\n", pos.Instrument.Symbol)
 			} else {
 				trackedHoldings[pos.Instrument.Symbol] = pos.LongQuantity
-				trackedPrices[pos.Instrument.Symbol] = pos.AveragePrice
 			}
 			fmt.Println()
 		}
+
+		tickers := make([]string, 0, len(trackedHoldings))
+		for k := range trackedHoldings {
+			tickers = append(tickers, k)
+		}
+		for k := range desiredAllocations.Proportions {
+			tickers = append(tickers, k)
+		}
+		for k := range desiredAllocations.FixedCashAmounts {
+			tickers = append(tickers, k)
+		}
+		trackedPrices := GetAssetPrices(a, tickers)
 
 		purchases, cash := balance.BalancePurchase(cash, trackedHoldings, trackedPrices, desiredAllocations)
 
@@ -165,7 +178,7 @@ func InvestCash(a *App, account *Account) AppHandler {
 				continue
 			}
 			if input == "proceed" {
-				return PlaceOrders(a, account, purchases)
+				return PlacePurchaseOrders(a, account, purchases)
 			} else {
 				return MainOptions
 			}
@@ -173,19 +186,47 @@ func InvestCash(a *App, account *Account) AppHandler {
 	}
 }
 
-func PlaceOrders(a *App, account *Account, orders map[string]int64) AppHandler {
+func GetAssetPrices(a *App, tickers []string) map[string]float64 {
+	addr := fmt.Sprintf(SchwabMarketDataApiAddress+"quotes?symbols=%s", strings.Join(tickers, "%2C")) + "&fields=quote&indicative=false"
+	resp, err := a.client.Get(addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Fatal(resp.Status)
+	}
+
+	quoteResponse := make(marketData.QuoteResponse)
+	err = json.NewDecoder(resp.Body).Decode(&quoteResponse)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(quoteResponse)
+
+	prices := make(map[string]float64)
+	for _, data := range quoteResponse {
+		prices[data.Symbol] = data.Quote.AskPrice
+	}
+	return prices
+}
+
+func PlacePurchaseOrders(a *App, account *Account, orders map[string]int64) AppHandler {
 	return func(a *App) AppHandler {
 		for ticker, count := range orders {
-			order := schwabTypes.Order{
+			if count < 1 {
+				continue
+			}
+			order := trader.Order{
 				OrderType:         "MARKET",
 				Session:           "NORMAL",
 				Duration:          "DAY",
 				OrderStrategyType: "SINGLE",
-				OrderLegCollection: []schwabTypes.OrderLeg{
+				OrderLegCollection: []trader.OrderLeg{
 					{
 						Instruction: "BUY",
 						Quantity:    float64(count),
-						Instrument: schwabTypes.Instrument{
+						Instrument: trader.Instrument{
 							Symbol:    ticker,
 							AssetType: "EQUITY",
 						},
@@ -237,7 +278,7 @@ func (a *App) GetAccounts() ([]Account, error) {
 		return nil, auth.ErrUnauthorized
 	}
 
-	var accounts schwabTypes.AccountNumbersResponse
+	var accounts trader.AccountNumbersResponse
 	err = json.NewDecoder(resp.Body).Decode(&accounts)
 	if err != nil {
 		log.Fatal(err)
@@ -254,7 +295,7 @@ func (a *App) GetAccounts() ([]Account, error) {
 			return nil, auth.ErrUnauthorized
 		}
 
-		var securitiesAccount schwabTypes.AccountResponse
+		var securitiesAccount trader.AccountResponse
 		err = json.NewDecoder(resp.Body).Decode(&securitiesAccount)
 		if err != nil {
 			log.Fatal(err)

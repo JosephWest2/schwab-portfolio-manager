@@ -153,6 +153,24 @@ func TestBalancePurchase(t *testing.T) {
 			},
 			expectedCashRemaining: 1.5,
 		},
+		{
+			cash:               0.5,
+			desiredAllocations: alloc2,
+			holdings: map[string]float64{
+				"VTI":   10,
+				"VSIAX": 10,
+				"VXUS":  10,
+			},
+			prices: map[string]float64{
+				"VTI":   50,
+				"VSIAX": 20,
+				"VXUS":  20,
+				"VWO":   10,
+				"SWVXX": 1,
+			},
+			expectedPurchases:     map[string]int64{},
+			expectedCashRemaining: 0.5,
+		},
 	}
 	for _, test := range tests {
 		purchases, cash := BalancePurchase(test.cash, test.holdings, test.prices, test.desiredAllocations)
@@ -178,7 +196,7 @@ func TestRebalanceWithSelling(t *testing.T) {
 	tests := []struct {
 		cash                      float64
 		desiredAllocations        *DesiredAllocations
-		holdings                  map[string]int64
+		holdings                  map[string]float64
 		prices                    map[string]float64
 		expectedPurchasesAndSales map[string]int64
 		expectedCashRemaining     float64
@@ -186,15 +204,17 @@ func TestRebalanceWithSelling(t *testing.T) {
 		{
 			cash:               0.32,
 			desiredAllocations: alloc1,
-			holdings: map[string]int64{
+			holdings: map[string]float64{
 				"DFAC": 66,
 				"DFIC": 22,
 				"DFEM": 12,
+				"SWVXX": 4000,
 			},
 			prices: map[string]float64{
 				"DFAC": 1,
 				"DFIC": 1,
 				"DFEM": 1,
+				"SWVXX": 1,
 			},
 			expectedPurchasesAndSales: map[string]int64{
 				"DFAC": -2,
@@ -206,15 +226,17 @@ func TestRebalanceWithSelling(t *testing.T) {
 		{
 			cash:               0.99,
 			desiredAllocations: alloc1,
-			holdings: map[string]int64{
+			holdings: map[string]float64{
 				"DFAC": 170,
 				"DFIC": 5,
 				"DFEM": 25,
+				"SWVXX": 4000,
 			},
 			prices: map[string]float64{
 				"DFAC": 1,
 				"DFIC": 1,
 				"DFEM": 1,
+				"SWVXX": 1,
 			},
 			expectedPurchasesAndSales: map[string]int64{
 				"DFAC": -42,
@@ -226,17 +248,19 @@ func TestRebalanceWithSelling(t *testing.T) {
 		{
 			cash:               202.12,
 			desiredAllocations: alloc2,
-			holdings: map[string]int64{
+			holdings: map[string]float64{
 				"VTI":   10,
 				"VSIAX": 10,
 				"VXUS":  10,
 				"VWO":   10,
+				"SWVXX": 4000,
 			},
 			prices: map[string]float64{
 				"VTI":   10,
 				"VSIAX": 10,
 				"VXUS":  10,
 				"VWO":   10,
+				"SWVXX": 1,
 			},
 			expectedPurchasesAndSales: map[string]int64{
 				"VTI":   20,
