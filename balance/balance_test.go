@@ -80,7 +80,7 @@ func TestBalancePurchase(t *testing.T) {
 		desiredAllocations    *DesiredAllocations
 		holdings              map[string]float64
 		prices                map[string]float64
-		expectedPurchases     map[string]int64
+		expectedPurchases     map[string]float64
 		expectedCashRemaining float64
 	}{
 		{
@@ -98,7 +98,7 @@ func TestBalancePurchase(t *testing.T) {
 				"DFEM":  10,
 				"SWVXX": 1,
 			},
-			expectedPurchases: map[string]int64{
+			expectedPurchases: map[string]float64{
 				"DFAC":  10,
 				"DFIC":  6,
 				"DFEM":  8,
@@ -121,7 +121,7 @@ func TestBalancePurchase(t *testing.T) {
 				"DFEM":  100.01,
 				"SWVXX": 1,
 			},
-			expectedPurchases: map[string]int64{
+			expectedPurchases: map[string]float64{
 				"DFAC":  9,
 				"SWVXX": 4,
 			},
@@ -144,7 +144,7 @@ func TestBalancePurchase(t *testing.T) {
 				"VWO":   10,
 				"SWVXX": 1,
 			},
-			expectedPurchases: map[string]int64{
+			expectedPurchases: map[string]float64{
 				"VTI":   10,
 				"VSIAX": 10,
 				"VXUS":  10,
@@ -168,7 +168,7 @@ func TestBalancePurchase(t *testing.T) {
 				"VWO":   10,
 				"SWVXX": 1,
 			},
-			expectedPurchases:     map[string]int64{},
+			expectedPurchases:     map[string]float64{},
 			expectedCashRemaining: 0.5,
 		},
 	}
@@ -192,31 +192,35 @@ func TestRebalanceWithSelling(t *testing.T) {
 	if err != nil {
 		t.Fatal("cannot continue testing TestRebalanceWithSelling: " + err.Error())
 	}
+	alloc5, err := LoadDesiredAllocations("testing/desiredAllocations_test5.yaml")
+	if err != nil {
+		t.Fatal("cannot continue testing TestRebalanceWithSelling: " + err.Error())
+	}
 
 	tests := []struct {
 		cash                      float64
 		desiredAllocations        *DesiredAllocations
 		holdings                  map[string]float64
 		prices                    map[string]float64
-		expectedPurchasesAndSales map[string]int64
+		expectedPurchasesAndSales map[string]float64
 		expectedCashRemaining     float64
 	}{
 		{
 			cash:               0.32,
 			desiredAllocations: alloc1,
 			holdings: map[string]float64{
-				"DFAC": 66,
-				"DFIC": 22,
-				"DFEM": 12,
+				"DFAC":  66,
+				"DFIC":  22,
+				"DFEM":  12,
 				"SWVXX": 4000,
 			},
 			prices: map[string]float64{
-				"DFAC": 1,
-				"DFIC": 1,
-				"DFEM": 1,
+				"DFAC":  1,
+				"DFIC":  1,
+				"DFEM":  1,
 				"SWVXX": 1,
 			},
-			expectedPurchasesAndSales: map[string]int64{
+			expectedPurchasesAndSales: map[string]float64{
 				"DFAC": -2,
 				"DFIC": 5,
 				"DFEM": -3,
@@ -224,21 +228,60 @@ func TestRebalanceWithSelling(t *testing.T) {
 			expectedCashRemaining: 0.32,
 		},
 		{
+			cash:               0.55,
+			desiredAllocations: alloc5,
+			holdings: map[string]float64{
+				"DFAC":  1000,
+				"DFIC":  1000,
+				"DFEM":  1000,
+			},
+			prices: map[string]float64{
+				"DFAC":  64.001,
+				"DFIC":  27.001,
+				"DFEM":  9.001,
+			},
+			expectedPurchasesAndSales: map[string]float64{},
+			expectedCashRemaining: 0.55,
+		},
+		{
+			cash:               0.32,
+			desiredAllocations: alloc1,
+			holdings: map[string]float64{
+				"DFAC":  4066,
+				"DFIC":  22,
+				"DFEM":  12,
+				"SWVXX": 0,
+			},
+			prices: map[string]float64{
+				"DFAC":  1,
+				"DFIC":  1,
+				"DFEM":  1,
+				"SWVXX": 1,
+			},
+			expectedPurchasesAndSales: map[string]float64{
+				"DFAC":  -4002,
+				"DFIC":  5,
+				"DFEM":  -3,
+				"SWVXX": 4000,
+			},
+			expectedCashRemaining: 0.32,
+		},
+		{
 			cash:               0.99,
 			desiredAllocations: alloc1,
 			holdings: map[string]float64{
-				"DFAC": 170,
-				"DFIC": 5,
-				"DFEM": 25,
+				"DFAC":  170,
+				"DFIC":  5,
+				"DFEM":  25,
 				"SWVXX": 4000,
 			},
 			prices: map[string]float64{
-				"DFAC": 1,
-				"DFIC": 1,
-				"DFEM": 1,
+				"DFAC":  1,
+				"DFIC":  1,
+				"DFEM":  1,
 				"SWVXX": 1,
 			},
-			expectedPurchasesAndSales: map[string]int64{
+			expectedPurchasesAndSales: map[string]float64{
 				"DFAC": -42,
 				"DFIC": 49,
 				"DFEM": -7,
@@ -262,13 +305,31 @@ func TestRebalanceWithSelling(t *testing.T) {
 				"VWO":   10,
 				"SWVXX": 1,
 			},
-			expectedPurchasesAndSales: map[string]int64{
+			expectedPurchasesAndSales: map[string]float64{
 				"VTI":   20,
 				"VSIAX": 2,
 				"VXUS":  2,
 				"VWO":   -4,
 			},
 			expectedCashRemaining: 2.12,
+		},
+		{
+			cash:               0.10,
+			desiredAllocations: alloc1,
+			holdings: map[string]float64{
+				"DFAC":  64.1,
+				"DFIC":  27.05,
+				"DFEM":  9.08,
+				"SWVXX": 4000,
+			},
+			prices: map[string]float64{
+				"DFAC":   1,
+				"DFIC": 1,
+				"DFEM":  1,
+				"SWVXX": 1,
+			},
+			expectedPurchasesAndSales: map[string]float64{},
+			expectedCashRemaining: 0.10,
 		},
 	}
 

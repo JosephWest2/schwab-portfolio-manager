@@ -3,7 +3,9 @@ package balance
 import (
 	"cmp"
 	"errors"
+	"fmt"
 	"log"
+	"maps"
 	"math"
 	"os"
 	"slices"
@@ -20,6 +22,10 @@ func AlmostEqual(a, b, epsilon float64) bool {
 type DesiredAllocations struct {
 	Proportions      map[string]float64
 	FixedCashAmounts map[string]float64
+}
+
+func (da *DesiredAllocations) Tickers() []string {
+	return append(slices.Collect(maps.Keys(da.Proportions)), slices.Collect(maps.Keys(da.FixedCashAmounts))...)
 }
 
 func NewDesiredAllocations() *DesiredAllocations {
@@ -109,8 +115,9 @@ func AssertValidDesiredAllocationPrices(desiredAllocations *DesiredAllocations, 
 	}
 }
 
-// returns purchases to be made and remaining cash
-func BalancePurchase(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) (map[string]int64, float64) {
+// Returns purchases to be made and remaining cash.
+// Note that partial shares can not be bought
+func BalancePurchase(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) (map[string]float64, float64) {
 
 	AssertValidDesiredAllocationPrices(desiredAllocations, prices)
 	AssertValidHoldingPrices(holdings, prices)
@@ -133,7 +140,7 @@ func BalancePurchase(cash float64, holdings map[string]float64, prices map[strin
 	for cash >= minPrice {
 		totalHoldingsValue := 0.0
 		for _, v := range holdingsSlice {
-			totalHoldingsValue += float64(v.Count) * prices[v.Ticker]
+			totalHoldingsValue += v.Count * prices[v.Ticker]
 		}
 		slices.SortFunc(holdingsSlice, PurchasePriorityFunc(totalHoldingsValue, prices, desiredAllocations))
 		// buy the asset with the most negative deviation that can be afforded
@@ -151,15 +158,15 @@ func BalancePurchase(cash float64, holdings map[string]float64, prices map[strin
 }
 
 // returns purchases to be made and remaining cash
-func FillFixedAmounts(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) (map[string]int64, float64) {
+func FillFixedAmounts(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) (map[string]float64, float64) {
 	AssertValidDesiredAllocationPrices(desiredAllocations, prices)
 	AssertValidHoldingPrices(holdings, prices)
-	result := make(map[string]int64, 0)
+	result := make(map[string]float64, 0)
 	for k, v := range desiredAllocations.FixedCashAmounts {
 		diff := v - holdings[k]*prices[k]
 		if diff > 0 {
 			spendAmount := math.Min(diff*prices[k], cash)
-			r := int64(math.Floor(spendAmount / prices[k]))
+			r := math.Floor(spendAmount / prices[k])
 			if r > 0 {
 				result[k] = r
 			}
@@ -169,35 +176,41 @@ func FillFixedAmounts(cash float64, holdings map[string]float64, prices map[stri
 	return result, cash
 }
 
-// returns sales to be made
-func SellExcessFixed(holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) map[string]int64 {
-	AssertValidDesiredAllocationPrices(desiredAllocations, prices)
-	AssertValidHoldingPrices(holdings, prices)
-	result := make(map[string]int64, 0)
-	for k, v := range desiredAllocations.FixedCashAmounts {
-		heldValue := holdings[k] * prices[k]
-		if heldValue > v {
-			result[k] = int64(math.Floor((heldValue - v) / prices[k]))
-		}
-	}
-	return result
-}
 
 // returns purchases and sales to be made and remaining cash
-func RebalanceWithSelling(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) (map[string]int64, float64) {
+func RebalanceWithSelling(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) (map[string]float64, float64) {
 	AssertValidDesiredAllocationPrices(desiredAllocations, prices)
 	AssertValidHoldingPrices(holdings, prices)
+
+	initialCash := cash
 	// simulate selling all stocks and buying at proper proportions
+	// maintain fractional holdings outside this calculation
+	fractionalHoldings := make(map[string]float64, 0)
 	for k, v := range holdings {
-		cash += float64(v) * prices[k]
+		_, frac := math.Modf(v)
+		cash += v * prices[k] - frac * prices[k]
 	}
-	newHoldings, cash := BalancePurchase(cash, nil, prices, desiredAllocations)
-	purchasesAndSales := make(map[string]int64, 0)
+	newHoldings, cash := BalancePurchase(cash, fractionalHoldings, prices, desiredAllocations)
+	for k := range newHoldings {
+		newHoldings[k] += fractionalHoldings[k]
+	}
+	purchasesAndSales := make(map[string]float64, 0)
 	for k, v := range holdings {
-		r := newHoldings[k] - int64(v)
+		ri := newHoldings[k] - v
+		r := float64(int64(newHoldings[k]-v))
+		fmt.Println(ri, r)
 		if r != 0 {
 			purchasesAndSales[k] = r
 		}
+	}
+	purchaseCount := 0
+	for _, v := range purchasesAndSales {
+		if v > 0 {
+			purchaseCount++
+		}
+	}
+	if purchaseCount < 1 {
+		return make(map[string]float64, 0), initialCash
 	}
 	return purchasesAndSales, cash
 }

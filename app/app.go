@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
+	"net/url"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/josephwest2/schwab-portfolio-manager/auth"
@@ -37,7 +40,7 @@ type AppHandler func(*App) AppHandler
 func NewApp() *App {
 	return &App{
 		tokenChan: make(chan *oauth2.Token),
-		next:      PrintAccounts,
+		next:      PrintAccountsHandler,
 	}
 }
 
@@ -63,7 +66,7 @@ func (a *App) Run() {
 
 }
 
-func MainOptions(a *App) AppHandler {
+func MainOptionsHandler(a *App) AppHandler {
 	fmt.Println("1. Print accounts")
 	fmt.Println("2. Invest cash")
 	fmt.Println("3. Rebalance accounts")
@@ -79,11 +82,11 @@ func MainOptions(a *App) AppHandler {
 
 		switch input {
 		case 1:
-			return PrintAccounts
+			return PrintAccountsHandler
 		case 2:
-			return InvestCashSelectAccount
+			return InvestCashSelectAccountHandler
 		case 3:
-			return RebalanceAccounts
+			return RebalanceAccountsSelectAccountHandler
 		case 4:
 			return nil
 		default:
@@ -92,81 +95,111 @@ func MainOptions(a *App) AppHandler {
 	}
 }
 
-func InvestCashSelectAccount(a *App) AppHandler {
-	for i, acc := range a.accounts {
-		fmt.Fprintf(os.Stdout, "\n#%v ********%v\n", i+1, acc.SecuritiesAccount.AccountNumber[len(acc.SecuritiesAccount.AccountNumber)-3:])
-		fmt.Fprintf(os.Stdout, "Account value: $%v\n", acc.SecuritiesAccount.InitialBalances.AccountValue)
-		fmt.Fprintf(os.Stdout, "Cash: $%v\n", acc.SecuritiesAccount.InitialBalances.CashBalance)
-	}
-
-	fmt.Println("\nSelect account to allocate cash to, 0 to cancel")
+func RebalanceAccountsSelectAccountHandler(a *App) AppHandler {
+	PrintAccounts(a.accounts)
+	fmt.Println("\nSelect account to rebalance, q to cancel")
 
 	for {
 		var input int
 		_, err := fmt.Scan(&input)
 		if err != nil {
-			fmt.Println("invalid input", err)
-			continue
+			return MainOptionsHandler
 		}
 
-		if input > 0 && input <= len(a.accounts) {
-			return InvestCash(a, &a.accounts[input-1])
+		if input >= 0 && input < len(a.accounts) {
+			return RebalanceAccountHandlerFunc(a, &a.accounts[input])
 		}
-
-		if input == 0 {
-			return MainOptions
-		}
+		fmt.Println("invalid input")
 	}
 }
 
-func InvestCash(a *App, account *Account) AppHandler {
+func PrintAccounts(accounts []Account) {
+	for i, acc := range accounts {
+		fmt.Fprintf(os.Stdout, "\n#%v ********%v\n", i, acc.SecuritiesAccount.AccountNumber[len(acc.SecuritiesAccount.AccountNumber)-3:])
+		fmt.Fprintf(os.Stdout, "Account value: $%v\n", acc.SecuritiesAccount.InitialBalances.AccountValue)
+		fmt.Fprintf(os.Stdout, "Cash: $%.2f\n\n", acc.SecuritiesAccount.InitialBalances.CashBalance)
+	}
+}
+
+func InvestCashSelectAccountHandler(a *App) AppHandler {
+	PrintAccounts(a.accounts)
+
+	fmt.Println("\nSelect account to allocate cash to, q to cancel")
+
+	for {
+		var input int
+		_, err := fmt.Scan(&input)
+		if err != nil {
+			return MainOptionsHandler
+		}
+
+		if input >= 0 && input < len(a.accounts) {
+			return InvestCashHandlerFunc(a, &a.accounts[input])
+		}
+		fmt.Println("invalid input")
+	}
+}
+
+// gives holdings that are tracked by desired allocations
+func GetTrackedHoldings(positions []trader.Position, desiredAllocations *balance.DesiredAllocations) map[string]float64 {
+	trackedHoldings := make(map[string]float64)
+	for _, pos := range positions {
+		if desiredAllocations.Proportions[pos.Instrument.Symbol] == 0 && desiredAllocations.FixedCashAmounts[pos.Instrument.Symbol] == 0 {
+			continue
+		}
+		trackedHoldings[pos.Instrument.Symbol] = pos.LongQuantity
+	}
+	for _, da := range desiredAllocations.Tickers() {
+		if _, ok := trackedHoldings[da]; !ok {
+			trackedHoldings[da] = 0
+		}
+	}
+	return trackedHoldings
+}
+
+func PrintCurrentPositions(positions []trader.Position, accountValue float64, desiredAllocations *balance.DesiredAllocations) {
+	fmt.Printf("Curent positions:\n")
+	for _, pos := range positions {
+		proportion := pos.MarketValue / accountValue
+		fmt.Fprintf(os.Stdout, "%v: %v shares, $%.2f, %.2f%%\n", pos.Instrument.Symbol, pos.LongQuantity, pos.MarketValue, proportion*100)
+		if desiredAllocations.Proportions[pos.Instrument.Symbol] == 0 && desiredAllocations.FixedCashAmounts[pos.Instrument.Symbol] == 0 {
+			fmt.Fprintf(os.Stdout, "No desired allocation for %v, skipping inclusion in further calculations\n", pos.Instrument.Symbol)
+		}
+		fmt.Println()
+	}
+}
+
+func InvestCashHandlerFunc(a *App, account *Account) AppHandler {
 	return func(a *App) AppHandler {
-		cash := account.SecuritiesAccount.InitialBalances.CashBalance
-		positions := account.SecuritiesAccount.Positions
 
 		desiredAllocations, err := balance.LoadDesiredAllocations(balance.DesiredAllocationsFile)
 		if err != nil {
 			fmt.Println("failed to load desiredAllocations", err)
-			return MainOptions
+			return MainOptionsHandler
 		}
 
-		trackedHoldings := make(map[string]float64)
+		trackedHoldings := GetTrackedHoldings(account.SecuritiesAccount.Positions, desiredAllocations)
+		PrintCurrentPositions(account.SecuritiesAccount.Positions, account.SecuritiesAccount.InitialBalances.AccountValue, desiredAllocations)
 
-		fmt.Printf("Curent positions:\n")
-		for _, pos := range positions {
-			proportion := pos.MarketValue / account.SecuritiesAccount.InitialBalances.AccountValue
-			fmt.Fprintf(os.Stdout, "%v: %v shares, $%.2f, %.2f%%\n", pos.Instrument.Symbol, pos.LongQuantity, pos.MarketValue, proportion*100)
-			if desiredAllocations.Proportions[pos.Instrument.Symbol] == 0 && desiredAllocations.FixedCashAmounts[pos.Instrument.Symbol] == 0 {
-				fmt.Fprintf(os.Stdout, "No desired allocation for %v\n", pos.Instrument.Symbol)
-			} else {
-				trackedHoldings[pos.Instrument.Symbol] = pos.LongQuantity
+		tickers := slices.Collect(maps.Keys(trackedHoldings))
+		for _, ticker := range desiredAllocations.Tickers() {
+			if _, ok := trackedHoldings[ticker]; !ok {
+				tickers = append(tickers, ticker)
 			}
-			fmt.Println()
-		}
-
-		tickers := make([]string, 0, len(trackedHoldings))
-		for k := range trackedHoldings {
-			tickers = append(tickers, k)
-		}
-		for k := range desiredAllocations.Proportions {
-			tickers = append(tickers, k)
-		}
-		for k := range desiredAllocations.FixedCashAmounts {
-			tickers = append(tickers, k)
 		}
 		trackedPrices := GetAssetPrices(a, tickers)
 
-		purchases, cash := balance.BalancePurchase(cash, trackedHoldings, trackedPrices, desiredAllocations)
+		purchases, cash := balance.BalancePurchase(account.SecuritiesAccount.InitialBalances.CashBalance, trackedHoldings, trackedPrices, desiredAllocations)
 
 		if len(purchases) == 0 {
 			fmt.Println("Not enough cash to make any purchases")
-			return MainOptions
+			return MainOptionsHandler
 		}
 		fmt.Println("Optimal purchases:")
 		for k, v := range purchases {
-			fmt.Fprintf(os.Stdout, "%v: %v shares", k, v)
+			fmt.Fprintf(os.Stdout, "%v: %v shares\n", k, v)
 		}
-		fmt.Fprintf(os.Stdout, "Resulting cash: $%v\n\n", cash)
+		fmt.Fprintf(os.Stdout, "Resulting cash: $%.2f\n\n", cash)
 
 		fmt.Println("type \"proceed\" to place the orders, anything else to cancel")
 
@@ -178,9 +211,9 @@ func InvestCash(a *App, account *Account) AppHandler {
 				continue
 			}
 			if input == "proceed" {
-				return PlaceBuyOrder(a, account, purchases)
+				return PlaceBuyOrderHandlerFunc(a, account, purchases)
 			} else {
-				return MainOptions
+				return MainOptionsHandler
 			}
 		}
 	}
@@ -205,13 +238,14 @@ func GetAssetPrices(a *App, tickers []string) map[string]float64 {
 
 	prices := make(map[string]float64)
 	for _, data := range quoteResponse {
-		prices[data.Symbol] = data.Quote.AskPrice
+		prices[data.Symbol] = data.Quote.LastPrice
 	}
 	return prices
 }
 
-func PlaceTriggerOrder(a *App, account *Account, orders map[string]int64) AppHandler {
+func PlaceTriggerOrderHandlerFunc(a *App, account *Account, orders map[string]float64) AppHandler {
 	return func(a *App) AppHandler {
+		fmt.Println("placing trigger order")
 		order := trader.Order{
 			OrderType:          "MARKET",
 			Session:            "NORMAL",
@@ -222,7 +256,7 @@ func PlaceTriggerOrder(a *App, account *Account, orders map[string]int64) AppHan
 			ChildOrderStrategies: []trader.Order{
 				{
 					OrderType:          "MARKET",
-					Cancelable: true,
+					Cancelable:         true,
 					Session:            "NORMAL",
 					Duration:           "DAY",
 					OrderStrategyType:  "SINGLE",
@@ -234,7 +268,7 @@ func PlaceTriggerOrder(a *App, account *Account, orders map[string]int64) AppHan
 			if count < 0 {
 				order.OrderLegCollection = append(order.OrderLegCollection, trader.OrderLeg{
 					Instruction: "SELL",
-					Quantity:    float64(-count),
+					Quantity:    -count,
 					Instrument: trader.Instrument{
 						Symbol:    ticker,
 						AssetType: "EQUITY",
@@ -243,7 +277,7 @@ func PlaceTriggerOrder(a *App, account *Account, orders map[string]int64) AppHan
 			} else if count > 0 {
 				order.ChildOrderStrategies[0].OrderLegCollection = append(order.ChildOrderStrategies[0].OrderLegCollection, trader.OrderLeg{
 					Instruction: "BUY",
-					Quantity:    float64(count),
+					Quantity:    count,
 					Instrument: trader.Instrument{
 						Symbol:    ticker,
 						AssetType: "EQUITY",
@@ -257,73 +291,146 @@ func PlaceTriggerOrder(a *App, account *Account, orders map[string]int64) AppHan
 		if err != nil {
 			log.Fatal(err)
 		}
-		return MainOptions
+		return MainOptionsHandler
+		resp, err := a.client.Post(
+			SchwabTraderApiAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
+			"application/json",
+			bytes.NewBuffer(orderData),
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if resp.StatusCode != 200 {
+			log.Fatal("Failed to place order", resp.Body)
+		}
+		return MainOptionsHandler
 	}
 
 }
 
-func PlaceBuyOrder(a *App, account *Account, orders map[string]int64) AppHandler {
+func PlaceBuyOrderHandlerFunc(a *App, account *Account, orders map[string]float64) AppHandler {
 	return func(a *App) AppHandler {
+		fmt.Println("placing buy order")
+		order := trader.Order{
+			OrderType:          "MARKET",
+			Session:            "NORMAL",
+			Duration:           "DAY",
+			Cancelable:         true,
+			OrderStrategyType:  "SINGLE",
+			OrderLegCollection: make([]trader.OrderLeg, 0),
+		}
 		for ticker, count := range orders {
 			if count < 1 {
 				continue
 			}
-			order := trader.Order{
-				OrderType:         "MARKET",
-				Session:           "NORMAL",
-				Duration:          "DAY",
-				Cancelable: true,
-				OrderStrategyType: "SINGLE",
-				OrderLegCollection: []trader.OrderLeg{
-					{
-						Instruction: "BUY",
-						Quantity:    float64(count),
-						Instrument: trader.Instrument{
-							Symbol:    ticker,
-							AssetType: "EQUITY",
-						},
-					},
+			order.OrderLegCollection = append(order.OrderLegCollection, trader.OrderLeg{
+				Instruction: "BUY",
+				Quantity:    count,
+				Instrument: trader.Instrument{
+					Symbol:    ticker,
+					AssetType: "EQUITY",
 				},
-			}
-			orderData, err := json.Marshal(order)
-			fmt.Println("serialized order", string(orderData))
-			if err != nil {
-				log.Fatal(err)
-			}
-			return MainOptions
-			resp, err := a.client.Post(
-				SchwabTraderApiAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
-				"application/json",
-				bytes.NewBuffer(orderData),
-			)
-			if err != nil {
-				log.Fatal(err)
-			}
-			if resp.StatusCode != 200 {
-				log.Fatal("Failed to place order", resp.Body)
-			}
+			})
+		}
+		orderData, err := json.Marshal(order)
+		fmt.Println("serialized order", string(orderData))
+		if err != nil {
+			log.Fatal(err)
+		}
+		return MainOptionsHandler
+		resp, err := a.client.Post(
+			SchwabTraderApiAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
+			"application/json",
+			bytes.NewBuffer(orderData),
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if resp.StatusCode != 200 {
+			log.Fatal("Failed to place order", resp.Body)
 		}
 
-		return MainOptions
+		return MainOptionsHandler
 	}
 }
 
-func RebalanceAccounts(a *App) AppHandler {
-	return MainOptions
+func RebalanceAccountHandlerFunc(a *App, account *Account) AppHandler {
+	return func(a *App) AppHandler {
+
+		desiredAllocations, err := balance.LoadDesiredAllocations(balance.DesiredAllocationsFile)
+		if err != nil {
+			fmt.Println("failed to load desiredAllocations", err)
+			return MainOptionsHandler
+		}
+
+		trackedHoldings := GetTrackedHoldings(account.SecuritiesAccount.Positions, desiredAllocations)
+		PrintCurrentPositions(account.SecuritiesAccount.Positions, account.SecuritiesAccount.InitialBalances.AccountValue, desiredAllocations)
+
+		tickers := slices.Collect(maps.Keys(trackedHoldings))
+		for _, ticker := range desiredAllocations.Tickers() {
+			if _, ok := trackedHoldings[ticker]; !ok {
+				tickers = append(tickers, ticker)
+			}
+		}
+		trackedPrices := GetAssetPrices(a, tickers)
+
+		orders, cash := balance.RebalanceWithSelling(account.SecuritiesAccount.InitialBalances.CashBalance, trackedHoldings, trackedPrices, desiredAllocations)
+		purchases := make(map[string]float64)
+		sales := make(map[string]float64)
+		for k, v := range orders {
+			if v > 0 {
+				purchases[k] = v
+			} else if v < 0 {
+				sales[k] = v
+			}
+		}
+		if len(purchases) == 0 {
+			fmt.Println("Portfolio is already optimally balanced")
+			return MainOptionsHandler
+		}
+		fmt.Println("Optimal sales:")
+		for k, v := range sales {
+			fmt.Fprintf(os.Stdout, "%v: %v shares\n", k, v)
+		}
+		fmt.Println("Optimal purchases:")
+		for k, v := range purchases {
+			fmt.Fprintf(os.Stdout, "%v: %v shares\n", k, v)
+		}
+		fmt.Fprintf(os.Stdout, "Resulting cash: $%.2f\n\n", cash)
+
+		fmt.Println("type \"proceed\" to place the orders, anything else to cancel")
+
+		for {
+			var input string
+			_, err := fmt.Scan(&input)
+			if err != nil {
+				fmt.Println("invalid input", err)
+				continue
+			}
+			if input == "proceed" {
+				if len(sales) == 0 {
+					return PlaceBuyOrderHandlerFunc(a, account, purchases)
+				}
+				return PlaceTriggerOrderHandlerFunc(a, account, orders)
+			} else {
+				return MainOptionsHandler
+			}
+		}
+	}
 }
 
-func PrintAccounts(a *App) AppHandler {
-	for _, acc := range a.accounts {
-		fmt.Fprintf(os.Stdout, "******%v value: $%v\n", acc.SecuritiesAccount.AccountNumber[len(acc.SecuritiesAccount.AccountNumber)-3:], acc.SecuritiesAccount.InitialBalances.AccountValue)
-	}
-
-	return MainOptions
+func PrintAccountsHandler(a *App) AppHandler {
+	PrintAccounts(a.accounts)
+	return MainOptionsHandler
 }
 
 func (a *App) GetAccounts() ([]Account, error) {
 	resp, err := a.client.Get(SchwabTraderApiAddress + "accounts/accountNumbers")
 	if err != nil {
-		log.Fatal(err)
+		ue := err.(*url.Error)
+		if _, ok := ue.Err.(*oauth2.RetrieveError); ok {
+			return nil, auth.ErrUnauthorized
+		}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized {

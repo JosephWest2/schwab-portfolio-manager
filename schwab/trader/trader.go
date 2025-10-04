@@ -1,7 +1,5 @@
 package trader
 
-import "time"
-
 type AllAccountsResponse []struct {
 	SecuritiesAccount SecuritiesAccount `json:"securitiesAccount"`
 }
@@ -17,9 +15,9 @@ type SecuritiesAccount struct {
 	IsClosingOnlyRestricted bool              `json:"isClosingOnlyRestricted,omitempty"`
 	PfcbFlag                bool              `json:"pfcbFlag,omitempty"`
 	Positions               []Position        `json:"positions,omitempty"`
-	InitialBalances         BalancesInitial   `json:"initialBalances,omitempty"`
-	CurrentBalances         BalancesCurrent   `json:"currentBalances,omitempty"`
-	ProjectedBalances       BalancesProjected `json:"projectedBalances,omitempty"`
+	InitialBalances         BalancesInitial   `json:"initialBalances"`
+	CurrentBalances         BalancesCurrent   `json:"currentBalances"`
+	ProjectedBalances       BalancesProjected `json:"projectedBalances"`
 }
 
 type Position struct {
@@ -31,7 +29,7 @@ type Position struct {
 	SettledLongQuantity          float64    `json:"settledLongQuantity,omitempty"`
 	SettledShortQuantity         float64    `json:"settledShortQuantity,omitempty"`
 	AgedQuantity                 float64    `json:"agedQuantity,omitempty"`
-	Instrument                   Instrument `json:"instrument,omitempty"`
+	Instrument                   Instrument `json:"instrument"`
 	MarketValue                  float64    `json:"marketValue,omitempty"`
 	MaintenanceRequirement       float64    `json:"maintenanceRequirement,omitempty"`
 	AverageLongPrice             float64    `json:"averageLongPrice,omitempty"`
@@ -126,13 +124,13 @@ type Order struct {
 	Session                  string          `json:"session,omitempty"`
 	Duration                 string          `json:"duration,omitempty"`
 	OrderType                string          `json:"orderType,omitempty"`
-	CancelTime               time.Time       `json:"cancelTime,omitempty"`
+	CancelTime               string          `json:"cancelTime,omitempty"`
 	ComplexOrderStrategyType string          `json:"complexOrderStrategyType,omitempty"`
 	Quantity                 float64         `json:"quantity,omitempty"`
 	FilledQuantity           float64         `json:"filledQuantity,omitempty"`
 	RemainingQuantity        float64         `json:"remainingQuantity,omitempty"`
 	DestinationLinkName      string          `json:"destinationLinkName,omitempty"`
-	ReleaseTime              time.Time       `json:"releaseTime,omitempty"`
+	ReleaseTime              string          `json:"releaseTime,omitempty"`
 	StopPrice                float64         `json:"stopPrice,omitempty"`
 	StopPriceLinkBasis       string          `json:"stopPriceLinkBasis,omitempty"`
 	StopPriceLinkType        string          `json:"stopPriceLinkType,omitempty"`
@@ -150,8 +148,8 @@ type Order struct {
 	Cancelable               bool            `json:"cancelable,omitempty"`
 	Editable                 bool            `json:"editable,omitempty"`
 	Status                   string          `json:"status,omitempty"`
-	EnteredTime              time.Time       `json:"enteredTime,omitempty"`
-	CloseTime                time.Time       `json:"closeTime,omitempty"`
+	EnteredTime              string          `json:"enteredTime,omitempty"`
+	CloseTime                string          `json:"closeTime,omitempty"`
 	AccountNumber            int64           `json:"accountNumber,omitempty"`
 	OrderActivityCollection  []OrderActivity `json:"orderActivityCollection,omitempty"`
 	ReplacingOrderCollection []string        `json:"replacingOrderCollection,omitempty"`
@@ -162,7 +160,7 @@ type Order struct {
 type OrderLeg struct {
 	OrderLegType   string     `json:"orderLegType,omitempty"`
 	LegID          int64      `json:"legId,omitempty"`
-	Instrument     Instrument `json:"instrument,omitempty"`
+	Instrument     Instrument `json:"instrument"`
 	Instruction    string     `json:"instruction,omitempty"`
 	PositionEffect string     `json:"positionEffect,omitempty"`
 	Quantity       float64    `json:"quantity,omitempty"`
@@ -180,10 +178,10 @@ type OrderActivity struct {
 }
 
 type ExecutionLeg struct {
-	LegID             int64     `json:"legId,omitempty"`
-	Price             float64   `json:"price,omitempty"`
-	Quantity          float64   `json:"quantity,omitempty"`
-	MismarkedQuantity float64   `json:"mismarkedQuantity,omitempty"`
-	InstrumentID      int64     `json:"instrumentId,omitempty"`
-	Time              time.Time `json:"time,omitempty"`
+	LegID             int64   `json:"legId,omitempty"`
+	Price             float64 `json:"price,omitempty"`
+	Quantity          float64 `json:"quantity,omitempty"`
+	MismarkedQuantity float64 `json:"mismarkedQuantity,omitempty"`
+	InstrumentID      int64   `json:"instrumentId,omitempty"`
+	Time              string  `json:"time,omitempty"`
 }
