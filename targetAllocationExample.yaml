@@ -1,0 +1,26 @@
+# used to balance across all accounts if desired
+global:
+  - ticker: DFAC
+    proportion: 0.64
+  - ticker: DFIC
+    proportion: 0.27
+  - ticker: DFEM
+    proportion: 0.09
+# last 3 digits of account number
+"123":
+  - ticker: DFAC
+    proportion: 0.64
+  - ticker: DFIC
+    proportion: 0.27
+  - ticker: DFEM
+    proportion: 0.09
+  - ticker: SWVXX
+    fixedCashValue: 3500
+# last 3 digits of account number
+"456":
+  - ticker: DFAC
+    proportion: 0.64
+  - ticker: DFIC
+    proportion: 0.27
+  - ticker: DFEM
+    proportion: 0.09

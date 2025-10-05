@@ -1,0 +1,21 @@
+global:
+  VTI:
+    proportion: 1.0
+"123":
+  DFAC:
+    proportion: 0.64
+  DFIC:
+    proportion: 0.27
+  DFEM:
+    proportion: 0.09
+  SWVXX:
+    fixedCashValue: 2000
+"456":
+  VTI:
+    proportion: 0.50
+  VSAIX:
+    proportion: 0.20
+  VXUS:
+    proportion: 0.20
+  VWO:
+    proportion: 0.10

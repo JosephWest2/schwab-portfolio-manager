@@ -24,6 +24,7 @@ func TestEncryption(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to encrypt: %v", err)
 		}
+		defer os.Remove(test.filename)
 		text, err := DecryptFromFile(test.filename)
 		if err != nil {
 			t.Fatalf("failed to decrypt: %v", err)
@@ -31,6 +32,5 @@ func TestEncryption(t *testing.T) {
 		if string(text) != test.input {
 			t.Fatalf("expected %s, got %s", test.input, string(text))
 		}
-		os.Remove(test.filename)
 	}
 }

@@ -1,5 +1,6 @@
 package marketData
 
+
 type QuoteResponse map[string]Instrument
 
 type Instrument struct {

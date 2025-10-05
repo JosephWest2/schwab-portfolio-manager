@@ -2,98 +2,36 @@ package balance
 
 import (
 	"cmp"
-	"errors"
-	"fmt"
 	"log"
 	"maps"
 	"math"
-	"os"
 	"slices"
 
-	"github.com/goccy/go-yaml"
+	"github.com/josephwest2/schwab-portfolio-manager/targetAllocation"
 )
 
-var DesiredAllocationsFile = "desiredAllocations.yaml"
-
-func AlmostEqual(a, b, epsilon float64) bool {
-	return math.Abs(a-b) < epsilon
-}
-
-type DesiredAllocations struct {
-	Proportions      map[string]float64
-	FixedCashAmounts map[string]float64
-}
-
-func (da *DesiredAllocations) Tickers() []string {
-	return append(slices.Collect(maps.Keys(da.Proportions)), slices.Collect(maps.Keys(da.FixedCashAmounts))...)
-}
-
-func NewDesiredAllocations() *DesiredAllocations {
-	return &DesiredAllocations{
-		Proportions:      make(map[string]float64),
-		FixedCashAmounts: make(map[string]float64),
-	}
-}
-
-func LoadDesiredAllocations(filepath string) (*DesiredAllocations, error) {
-
-	type DesiredAllocationsYaml struct {
-		Ticker          string  `yaml:"ticker"`
-		Proportion      float64 `yaml:"proportion"`
-		FixedCashAmount float64 `yaml:"fixedCashAmount"`
-	}
-
-	data, err := os.ReadFile(filepath)
-	if err != nil {
-		return nil, errors.New("failed to read allocation file: " + err.Error())
-	}
-
-	var desiredAllocations []DesiredAllocationsYaml
-
-	err = yaml.Unmarshal(data, &desiredAllocations)
-	if err != nil {
-		return nil, errors.New("failed to parse allocation file: " + err.Error())
-	}
-
-	result := NewDesiredAllocations()
-	for _, v := range desiredAllocations {
-		if v.FixedCashAmount > 0 {
-			result.FixedCashAmounts[v.Ticker] = v.FixedCashAmount
-		} else {
-			result.Proportions[v.Ticker] = v.Proportion
-		}
-	}
-
-	sum := 0.0
-	for _, v := range result.Proportions {
-		sum += v
-	}
-	if !AlmostEqual(sum, 1.0, 1e-7) {
-		return nil, errors.New("allocation proportions do not sum to 1.0")
-	}
-
-	return result, err
-}
+type Ticker = targetAllocation.Ticker
+type ShareQuantity = float64
 
 type Holding struct {
-	Ticker string
-	Count  float64
+	Ticker Ticker
+	Amount ShareQuantity
 }
 
 // sort by deviation from expected proportion
-func PurchasePriorityFunc(totalHoldingsValue float64, prices map[string]float64, desiredAllocations *DesiredAllocations) func(a, b Holding) int {
-	AssertValidDesiredAllocationPrices(desiredAllocations, prices)
+func PurchasePriorityFunc(totalHoldingsValue float64, prices map[Ticker]float64, proportionTargets map[Ticker]float64) func(a, b Holding) int {
+	AssertValidDesiredAllocationPrices(slices.Collect(maps.Keys(proportionTargets)), prices)
 	return func(a, b Holding) int {
-		va := float64(a.Count) * prices[a.Ticker]
-		vb := float64(b.Count) * prices[b.Ticker]
-		da := va/totalHoldingsValue - desiredAllocations.Proportions[a.Ticker]
-		db := vb/totalHoldingsValue - desiredAllocations.Proportions[b.Ticker]
+		va := float64(a.Amount) * prices[a.Ticker]
+		vb := float64(b.Amount) * prices[b.Ticker]
+		da := va/totalHoldingsValue - proportionTargets[a.Ticker]
+		db := vb/totalHoldingsValue - proportionTargets[b.Ticker]
 		return cmp.Compare(da, db)
 	}
 }
 
 // panics on error
-func AssertValidHoldingPrices(holdings map[string]float64, prices map[string]float64) {
+func AssertValidHoldingPrices(holdings map[Ticker]float64, prices map[Ticker]float64) {
 	for k := range holdings {
 		if _, ok := prices[k]; !ok {
 			log.Fatal("price for " + k + " in holdings not found")
@@ -102,115 +40,121 @@ func AssertValidHoldingPrices(holdings map[string]float64, prices map[string]flo
 }
 
 // panics on error
-func AssertValidDesiredAllocationPrices(desiredAllocations *DesiredAllocations, prices map[string]float64) {
-	for k := range desiredAllocations.Proportions {
-		if _, ok := prices[k]; !ok {
-			log.Fatal("price for " + k + " in desiredAllocations.Proportions not found")
-		}
-	}
-	for k := range desiredAllocations.FixedCashAmounts {
-		if _, ok := prices[k]; !ok {
-			log.Fatal("price for " + k + " in desiredAllocaitons.FixedCashAmounts not found")
+func AssertValidDesiredAllocationPrices(tickers []Ticker, prices map[Ticker]float64) {
+	for _, ticker := range tickers {
+		if _, ok := prices[ticker]; !ok {
+			log.Fatal("price for " + ticker + " not found")
 		}
 	}
 }
 
-// Returns purchases to be made and remaining cash.
-// Note that partial shares can not be bought
-func BalancePurchase(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) (map[string]float64, float64) {
-
-	AssertValidDesiredAllocationPrices(desiredAllocations, prices)
-	AssertValidHoldingPrices(holdings, prices)
-
-	purchases, cash := FillFixedAmounts(cash, holdings, prices, desiredAllocations)
-	holdingsSlice := make([]Holding, 0, len(desiredAllocations.Proportions))
-	for k := range desiredAllocations.Proportions {
-		holdingsSlice = append(holdingsSlice, Holding{k, holdings[k]})
+// returns purchases to be made and remaining cash
+func FillProportions(cash float64, holdings map[Ticker]float64, prices map[Ticker]float64, proportionTargets map[Ticker]float64) (map[Ticker]float64, float64) {
+	holdingsSlice := make([]Holding, 0)
+	for ticker := range proportionTargets {
+		holdingsSlice = append(holdingsSlice, Holding{ticker, holdings[ticker]})
 	}
 	minPrice := math.MaxFloat64
-	availablePrices := make(map[string]float64)
-	for k := range desiredAllocations.Proportions {
-		availablePrices[k] = prices[k]
+	availablePrices := make(map[Ticker]float64)
+	for ticker := range proportionTargets {
+		availablePrices[ticker] = prices[ticker]
 	}
 	for _, v := range availablePrices {
 		if v < minPrice {
 			minPrice = v
 		}
 	}
+	purchases := make(map[Ticker]float64, 0)
 	for cash >= minPrice {
 		totalHoldingsValue := 0.0
 		for _, v := range holdingsSlice {
-			totalHoldingsValue += v.Count * prices[v.Ticker]
+			totalHoldingsValue += v.Amount * prices[v.Ticker]
 		}
-		slices.SortFunc(holdingsSlice, PurchasePriorityFunc(totalHoldingsValue, prices, desiredAllocations))
+		slices.SortFunc(holdingsSlice, PurchasePriorityFunc(totalHoldingsValue, prices, proportionTargets))
 		// buy the asset with the most negative deviation that can be afforded
-		for i, v := range holdingsSlice {
-			if prices[v.Ticker] > cash {
+		for i, holding := range holdingsSlice {
+			if prices[holding.Ticker] > cash {
 				continue
 			}
-			purchases[v.Ticker] += 1
-			holdingsSlice[i].Count += 1
-			cash -= prices[v.Ticker]
+			purchases[holding.Ticker] += 1
+			holdingsSlice[i].Amount += 1
+			cash -= prices[holding.Ticker]
 			break
 		}
 	}
 	return purchases, cash
 }
 
-// returns purchases to be made and remaining cash
-func FillFixedAmounts(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) (map[string]float64, float64) {
-	AssertValidDesiredAllocationPrices(desiredAllocations, prices)
+// Returns purchases to be made and remaining cash.
+// Note that partial shares can not be bought
+func BalancePurchase(cash float64, holdings map[Ticker]float64, prices map[Ticker]float64, targetAllocation targetAllocation.TargetAllocation) (map[Ticker]float64, float64) {
+
+	AssertValidDesiredAllocationPrices(slices.Collect(maps.Keys(targetAllocation)), prices)
 	AssertValidHoldingPrices(holdings, prices)
-	result := make(map[string]float64, 0)
-	for k, v := range desiredAllocations.FixedCashAmounts {
-		diff := v - holdings[k]*prices[k]
+
+	fixedTargets := make(map[Ticker]float64, 0)
+	for ticker, alloc := range targetAllocation {
+		if alloc.FixedCashValue != 0 {
+			fixedTargets[ticker] = alloc.FixedCashValue
+		}
+	}
+	proportionTargets := make(map[Ticker]float64, 0)
+	for ticker, alloc := range targetAllocation {
+		if alloc.Proportion != 0 {
+			proportionTargets[ticker] = alloc.Proportion
+		}
+	}
+
+	fixedPurchases, cash := FillFixed(cash, holdings, prices, fixedTargets)
+	proportionPurchases, cash := FillProportions(cash, holdings, prices, proportionTargets)
+
+	purchases := make(map[Ticker]float64, 0)
+	for k, v := range fixedPurchases {
+		purchases[k] += v
+	}
+	for k, v := range proportionPurchases {
+		purchases[k] += v
+	}
+	return purchases, cash
+}
+
+// returns purchases to be made and remaining cash
+func FillFixed(cash float64, holdings map[Ticker]float64, prices map[Ticker]float64, fixedTargets map[Ticker]float64) (map[Ticker]float64, float64) {
+	AssertValidDesiredAllocationPrices(slices.Collect(maps.Keys(fixedTargets)), prices)
+	AssertValidHoldingPrices(holdings, prices)
+	result := make(map[Ticker]float64, 0)
+	for ticker, alloc := range fixedTargets {
+		diff := alloc - holdings[ticker]*prices[ticker]
 		if diff > 0 {
-			spendAmount := math.Min(diff*prices[k], cash)
-			r := math.Floor(spendAmount / prices[k])
+			spendAmount := math.Min(diff*prices[ticker], cash)
+			r := math.Floor(spendAmount / prices[ticker])
 			if r > 0 {
-				result[k] = r
+				result[ticker] = r
 			}
-			cash -= float64(r) * prices[k]
+			cash -= float64(r) * prices[ticker]
 		}
 	}
 	return result, cash
 }
 
-
 // returns purchases and sales to be made and remaining cash
-func RebalanceWithSelling(cash float64, holdings map[string]float64, prices map[string]float64, desiredAllocations *DesiredAllocations) (map[string]float64, float64) {
-	AssertValidDesiredAllocationPrices(desiredAllocations, prices)
+func RebalanceWithSelling(cash float64, holdings map[Ticker]float64, prices map[Ticker]float64, targetAllocation targetAllocation.TargetAllocation) (map[Ticker]float64, float64) {
+	AssertValidDesiredAllocationPrices(slices.Collect(maps.Keys(targetAllocation)), prices)
 	AssertValidHoldingPrices(holdings, prices)
 
-	initialCash := cash
 	// simulate selling all stocks and buying at proper proportions
-	// maintain fractional holdings outside this calculation
-	fractionalHoldings := make(map[string]float64, 0)
-	for k, v := range holdings {
-		_, frac := math.Modf(v)
-		cash += v * prices[k] - frac * prices[k]
+	// exclude fractional shares from selling logic
+	newHoldings := make(map[Ticker]float64, 0)
+	for ticker, quantity := range holdings {
+		cash += math.Floor(quantity) * prices[ticker]
 	}
-	newHoldings, cash := BalancePurchase(cash, fractionalHoldings, prices, desiredAllocations)
-	for k := range newHoldings {
-		newHoldings[k] += fractionalHoldings[k]
-	}
-	purchasesAndSales := make(map[string]float64, 0)
-	for k, v := range holdings {
-		ri := newHoldings[k] - v
-		r := float64(int64(newHoldings[k]-v))
-		fmt.Println(ri, r)
-		if r != 0 {
-			purchasesAndSales[k] = r
+	newHoldings, cash = BalancePurchase(cash, newHoldings, prices, targetAllocation)
+	purchasesAndSales := make(map[Ticker]float64, 0)
+	for ticker := range newHoldings {
+		difference := float64(int64(newHoldings[ticker] - holdings[ticker]))
+		if difference != 0 {
+			purchasesAndSales[ticker] = difference
 		}
-	}
-	purchaseCount := 0
-	for _, v := range purchasesAndSales {
-		if v > 0 {
-			purchaseCount++
-		}
-	}
-	if purchaseCount < 1 {
-		return make(map[string]float64, 0), initialCash
 	}
 	return purchasesAndSales, cash
 }

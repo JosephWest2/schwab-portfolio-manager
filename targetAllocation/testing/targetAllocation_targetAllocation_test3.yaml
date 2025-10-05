@@ -1,0 +1,11 @@
+global:
+  VTI:
+    proportion: 0.499
+  VSAIX:
+    proportion: 0.20
+  VXUS:
+    proportion: 0.20
+  VWO:
+    proportion: 0.10
+  SWVXX:
+    fixedCashValue: 4000

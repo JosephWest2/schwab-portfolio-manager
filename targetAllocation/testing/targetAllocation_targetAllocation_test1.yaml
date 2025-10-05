@@ -1,0 +1,9 @@
+global:
+  DFAC:
+    proportion: 0.64
+  DFIC:
+    proportion: 0.27
+  DFEM:
+    proportion: 0.09
+  SWVXX:
+    fixedCashValue: 4000

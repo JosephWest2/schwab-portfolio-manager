@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"maps"
 	"net/http"
@@ -14,8 +15,9 @@ import (
 
 	"github.com/josephwest2/schwab-portfolio-manager/auth"
 	"github.com/josephwest2/schwab-portfolio-manager/balance"
-	"github.com/josephwest2/schwab-portfolio-manager/schwab/marketData"
-	"github.com/josephwest2/schwab-portfolio-manager/schwab/trader"
+	"github.com/josephwest2/schwab-portfolio-manager/targetAllocation"
+	"github.com/josephwest2/schwab-portfolio-manager/types/schwab/marketData"
+	"github.com/josephwest2/schwab-portfolio-manager/types/schwab/trader"
 	"golang.org/x/oauth2"
 )
 
@@ -141,28 +143,28 @@ func InvestCashSelectAccountHandler(a *App) AppHandler {
 }
 
 // gives holdings that are tracked by desired allocations
-func GetTrackedHoldings(positions []trader.Position, desiredAllocations *balance.DesiredAllocations) map[string]float64 {
+func GetTrackedHoldings(positions []trader.Position, targetAllocation targetAllocation.TargetAllocation) map[string]float64 {
 	trackedHoldings := make(map[string]float64)
 	for _, pos := range positions {
-		if desiredAllocations.Proportions[pos.Instrument.Symbol] == 0 && desiredAllocations.FixedCashAmounts[pos.Instrument.Symbol] == 0 {
+		if targetAllocation[pos.Instrument.Symbol].Proportion == 0 && targetAllocation[pos.Instrument.Symbol].FixedCashValue == 0 {
 			continue
 		}
 		trackedHoldings[pos.Instrument.Symbol] = pos.LongQuantity
 	}
-	for _, da := range desiredAllocations.Tickers() {
-		if _, ok := trackedHoldings[da]; !ok {
-			trackedHoldings[da] = 0
+	for ticker := range targetAllocation {
+		if _, ok := trackedHoldings[ticker]; !ok {
+			trackedHoldings[ticker] = 0
 		}
 	}
 	return trackedHoldings
 }
 
-func PrintCurrentPositions(positions []trader.Position, accountValue float64, desiredAllocations *balance.DesiredAllocations) {
+func PrintCurrentPositions(positions []trader.Position, accountValue float64, targetAllocation targetAllocation.TargetAllocation) {
 	fmt.Printf("Curent positions:\n")
 	for _, pos := range positions {
 		proportion := pos.MarketValue / accountValue
 		fmt.Fprintf(os.Stdout, "%v: %v shares, $%.2f, %.2f%%\n", pos.Instrument.Symbol, pos.LongQuantity, pos.MarketValue, proportion*100)
-		if desiredAllocations.Proportions[pos.Instrument.Symbol] == 0 && desiredAllocations.FixedCashAmounts[pos.Instrument.Symbol] == 0 {
+		if targetAllocation[pos.Instrument.Symbol].Proportion == 0 && targetAllocation[pos.Instrument.Symbol].FixedCashValue == 0 {
 			fmt.Fprintf(os.Stdout, "No desired allocation for %v, skipping inclusion in further calculations\n", pos.Instrument.Symbol)
 		}
 		fmt.Println()
@@ -172,24 +174,26 @@ func PrintCurrentPositions(positions []trader.Position, accountValue float64, de
 func InvestCashHandlerFunc(a *App, account *Account) AppHandler {
 	return func(a *App) AppHandler {
 
-		desiredAllocations, err := balance.LoadDesiredAllocations(balance.DesiredAllocationsFile)
+		targetAllocations, err := targetAllocation.LoadTargetAllocations(targetAllocation.TargetAllocationFile)
 		if err != nil {
-			fmt.Println("failed to load desiredAllocations", err)
+			fmt.Println("failed to load targetAllocations", err)
 			return MainOptionsHandler
 		}
 
-		trackedHoldings := GetTrackedHoldings(account.SecuritiesAccount.Positions, desiredAllocations)
-		PrintCurrentPositions(account.SecuritiesAccount.Positions, account.SecuritiesAccount.InitialBalances.AccountValue, desiredAllocations)
+		targetAllocation := targetAllocations[account.SecuritiesAccount.AccountNumber[len(account.SecuritiesAccount.AccountNumber)-3:]]
+
+		trackedHoldings := GetTrackedHoldings(account.SecuritiesAccount.Positions, targetAllocation)
+		PrintCurrentPositions(account.SecuritiesAccount.Positions, account.SecuritiesAccount.InitialBalances.AccountValue, targetAllocation)
 
 		tickers := slices.Collect(maps.Keys(trackedHoldings))
-		for _, ticker := range desiredAllocations.Tickers() {
+		for ticker := range targetAllocations {
 			if _, ok := trackedHoldings[ticker]; !ok {
 				tickers = append(tickers, ticker)
 			}
 		}
 		trackedPrices := GetAssetPrices(a, tickers)
 
-		purchases, cash := balance.BalancePurchase(account.SecuritiesAccount.InitialBalances.CashBalance, trackedHoldings, trackedPrices, desiredAllocations)
+		purchases, cash := balance.BalancePurchase(account.SecuritiesAccount.InitialBalances.CashBalance, trackedHoldings, trackedPrices, targetAllocation)
 
 		if len(purchases) == 0 {
 			fmt.Println("Not enough cash to make any purchases")
@@ -250,13 +254,11 @@ func PlaceTriggerOrderHandlerFunc(a *App, account *Account, orders map[string]fl
 			OrderType:          "MARKET",
 			Session:            "NORMAL",
 			Duration:           "DAY",
-			Cancelable:         true,
 			OrderStrategyType:  "TRIGGER",
 			OrderLegCollection: make([]trader.OrderLeg, 0),
 			ChildOrderStrategies: []trader.Order{
 				{
 					OrderType:          "MARKET",
-					Cancelable:         true,
 					Session:            "NORMAL",
 					Duration:           "DAY",
 					OrderStrategyType:  "SINGLE",
@@ -291,7 +293,6 @@ func PlaceTriggerOrderHandlerFunc(a *App, account *Account, orders map[string]fl
 		if err != nil {
 			log.Fatal(err)
 		}
-		return MainOptionsHandler
 		resp, err := a.client.Post(
 			SchwabTraderApiAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
 			"application/json",
@@ -300,9 +301,16 @@ func PlaceTriggerOrderHandlerFunc(a *App, account *Account, orders map[string]fl
 		if err != nil {
 			log.Fatal(err)
 		}
-		if resp.StatusCode != 200 {
-			log.Fatal("Failed to place order", resp.Body)
+		defer resp.Body.Close()
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
 		}
+		if resp.StatusCode != 201 {
+
+			log.Fatal("Failed to place order", string(respBody))
+		}
+		fmt.Println("\n\n Order Placed \n\n", string(respBody))
 		return MainOptionsHandler
 	}
 
@@ -314,8 +322,8 @@ func PlaceBuyOrderHandlerFunc(a *App, account *Account, orders map[string]float6
 		order := trader.Order{
 			OrderType:          "MARKET",
 			Session:            "NORMAL",
-			Duration:           "DAY",
 			Cancelable:         true,
+			Duration:           "DAY",
 			OrderStrategyType:  "SINGLE",
 			OrderLegCollection: make([]trader.OrderLeg, 0),
 		}
@@ -337,7 +345,6 @@ func PlaceBuyOrderHandlerFunc(a *App, account *Account, orders map[string]float6
 		if err != nil {
 			log.Fatal(err)
 		}
-		return MainOptionsHandler
 		resp, err := a.client.Post(
 			SchwabTraderApiAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
 			"application/json",
@@ -346,10 +353,13 @@ func PlaceBuyOrderHandlerFunc(a *App, account *Account, orders map[string]float6
 		if err != nil {
 			log.Fatal(err)
 		}
-		if resp.StatusCode != 200 {
-			log.Fatal("Failed to place order", resp.Body)
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 201 {
+			log.Fatal("Failed to place order", string(respBody))
 		}
 
+		fmt.Println("\n\n Order Placed\n\n", string(respBody))
 		return MainOptionsHandler
 	}
 }
@@ -357,24 +367,26 @@ func PlaceBuyOrderHandlerFunc(a *App, account *Account, orders map[string]float6
 func RebalanceAccountHandlerFunc(a *App, account *Account) AppHandler {
 	return func(a *App) AppHandler {
 
-		desiredAllocations, err := balance.LoadDesiredAllocations(balance.DesiredAllocationsFile)
+		targetAllocations, err := targetAllocation.LoadTargetAllocations(targetAllocation.TargetAllocationFile)
 		if err != nil {
-			fmt.Println("failed to load desiredAllocations", err)
+			fmt.Println("failed to load targetAllocations", err)
 			return MainOptionsHandler
 		}
 
-		trackedHoldings := GetTrackedHoldings(account.SecuritiesAccount.Positions, desiredAllocations)
-		PrintCurrentPositions(account.SecuritiesAccount.Positions, account.SecuritiesAccount.InitialBalances.AccountValue, desiredAllocations)
+		targetAllocation := targetAllocations[account.SecuritiesAccount.AccountNumber[len(account.SecuritiesAccount.AccountNumber)-3:]]
+
+		trackedHoldings := GetTrackedHoldings(account.SecuritiesAccount.Positions, targetAllocation)
+		PrintCurrentPositions(account.SecuritiesAccount.Positions, account.SecuritiesAccount.InitialBalances.AccountValue, targetAllocation)
 
 		tickers := slices.Collect(maps.Keys(trackedHoldings))
-		for _, ticker := range desiredAllocations.Tickers() {
+		for ticker := range targetAllocation {
 			if _, ok := trackedHoldings[ticker]; !ok {
 				tickers = append(tickers, ticker)
 			}
 		}
 		trackedPrices := GetAssetPrices(a, tickers)
 
-		orders, cash := balance.RebalanceWithSelling(account.SecuritiesAccount.InitialBalances.CashBalance, trackedHoldings, trackedPrices, desiredAllocations)
+		orders, cash := balance.RebalanceWithSelling(account.SecuritiesAccount.InitialBalances.CashBalance, trackedHoldings, trackedPrices, targetAllocation)
 		purchases := make(map[string]float64)
 		sales := make(map[string]float64)
 		for k, v := range orders {
