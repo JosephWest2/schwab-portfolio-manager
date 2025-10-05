@@ -9,11 +9,11 @@ import (
 )
 
 func TestBalancePurchase(t *testing.T) {
-	alloc1, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balance_test1.yaml")
+	alloc1, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balanceTest1.yaml")
 	if err != nil {
 		t.Fatal("cannot continue testing TestBalancePurchase: " + err.Error())
 	}
-	alloc2, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balance_test2.yaml")
+	alloc2, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balanceTest2.yaml")
 	if err != nil {
 		t.Fatal("cannot continue testing TestBalancePurchase: " + err.Error())
 	}
@@ -127,15 +127,15 @@ func TestBalancePurchase(t *testing.T) {
 }
 
 func TestRebalanceWithSelling(t *testing.T) {
-	alloc1, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balance_test1.yaml")
+	alloc1, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balanceTest1.yaml")
 	if err != nil {
 		t.Fatal("cannot continue testing TestRebalanceWithSelling: " + err.Error())
 	}
-	alloc2, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balance_test2.yaml")
+	alloc2, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balanceTest2.yaml")
 	if err != nil {
 		t.Fatal("cannot continue testing TestRebalanceWithSelling: " + err.Error())
 	}
-	alloc5, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balance_test5.yaml")
+	alloc5, err := targetAllocation.LoadTargetAllocations("testing/targetAllocation_balanceTest5.yaml")
 	if err != nil {
 		t.Fatal("cannot continue testing TestRebalanceWithSelling: " + err.Error())
 	}

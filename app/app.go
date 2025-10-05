@@ -254,12 +254,14 @@ func PlaceTriggerOrderHandlerFunc(a *App, account *Account, orders map[string]fl
 			OrderType:          "MARKET",
 			Session:            "NORMAL",
 			Duration:           "DAY",
+			Cancelable:         true,
 			OrderStrategyType:  "TRIGGER",
 			OrderLegCollection: make([]trader.OrderLeg, 0),
 			ChildOrderStrategies: []trader.Order{
 				{
 					OrderType:          "MARKET",
 					Session:            "NORMAL",
+					Cancelable:         true,
 					Duration:           "DAY",
 					OrderStrategyType:  "SINGLE",
 					OrderLegCollection: make([]trader.OrderLeg, 0),

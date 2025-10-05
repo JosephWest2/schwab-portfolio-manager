@@ -13,7 +13,7 @@ func TestLoadAllocations(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			filepath: "testing/targetAllocation_targetAllocation_test1.yaml",
+			filepath: "testing/targetAllocation_targetAllocationTest1.yaml",
 			expected: targetAllocation.TargetAllocations{
 				"global": targetAllocation.TargetAllocation{
 					"SWVXX": {
@@ -37,7 +37,7 @@ func TestLoadAllocations(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			filepath: "testing/targetAllocation_targetAllocation_test2.yaml",
+			filepath: "testing/targetAllocation_targetAllocationTest2.yaml",
 			expected: targetAllocation.TargetAllocations{
 				"567": targetAllocation.TargetAllocation{
 					"VTI": {
@@ -62,18 +62,18 @@ func TestLoadAllocations(t *testing.T) {
 		},
 		{
 			// Allocation sums to 0.999 not 1
-			filepath: "testing/targetAllocation_targetAllocation_test3.yaml",
+			filepath: "testing/targetAllocation_targetAllocationTest3.yaml",
 			expected: nil,
 			wantErr:  true,
 		},
 		{
 			// Allocation sums to 1.001 not 1
-			filepath: "testing/targetAllocation_targetAllocation_test4.yaml",
+			filepath: "testing/targetAllocation_targetAllocationTest4.yaml",
 			expected: nil,
 			wantErr:  true,
 		},
 		{
-			filepath: "testing/targetAllocation_targetAllocation_test5.yaml",
+			filepath: "testing/targetAllocation_targetAllocationTest5.yaml",
 			expected: targetAllocation.TargetAllocations{
 				"global": map[targetAllocation.Ticker]targetAllocation.Allocation{
 					"VTI": {
