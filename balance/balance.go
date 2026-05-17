@@ -126,7 +126,7 @@ func FillFixed(cash float64, holdings map[Ticker]float64, prices map[Ticker]floa
 	for ticker, alloc := range fixedTargets {
 		diff := alloc - holdings[ticker]*prices[ticker]
 		if diff > 0 {
-			spendAmount := math.Min(diff*prices[ticker], cash)
+			spendAmount := math.Min(diff, cash)
 			r := math.Floor(spendAmount / prices[ticker])
 			if r > 0 {
 				result[ticker] = r
