@@ -126,7 +126,7 @@ func PrintAccounts(accounts []Account) {
 func InvestCashSelectAccountHandler(a *App) AppHandler {
 	PrintAccounts(a.accounts)
 
-	fmt.Println("\nSelect account to allocate cash to, q to cancel")
+	fmt.Print("\nSelect account to allocate cash within, q to cancel: ")
 
 	for {
 		var input int
@@ -343,7 +343,6 @@ func PlaceBuyOrderHandlerFunc(a *App, account *Account, orders map[string]float6
 			})
 		}
 		orderData, err := json.Marshal(order)
-		fmt.Println("serialized order", string(orderData))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -361,7 +360,7 @@ func PlaceBuyOrderHandlerFunc(a *App, account *Account, orders map[string]float6
 			log.Fatal("Failed to place order", string(respBody))
 		}
 
-		fmt.Println("\n\n Order Placed\n\n", string(respBody))
+		fmt.Println("\nOrder(s) Placed Successfully")
 		return MainOptionsHandler
 	}
 }
