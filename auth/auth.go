@@ -43,7 +43,6 @@ func InitAuthCallbackServer(tokenChan chan *oauth2.Token) {
 			http.Error(w, "No code in url", http.StatusBadRequest)
 			return
 		}
-		fmt.Println("Auth code received: " + code)
 		token, err := OauthConfig.Exchange(context.Background(), code)
 		if err != nil {
 			log.Fatal("Failed to get token: " + err.Error())
@@ -83,7 +82,6 @@ func (ts *HookedTokenSource) Token() (*oauth2.Token, error) {
 	}
 
 	if ts.old == nil || ts.old != token {
-		fmt.Println("Token changed")
 		WriteTokenToFile(token)
 		ts.old = token
 	}
@@ -117,8 +115,8 @@ func ReadTokenFromFile() (*oauth2.Token, error) {
 }
 
 func Authenticate(tokenChan chan *oauth2.Token) *http.Client {
-	authCodeUrl := OauthConfig.AuthCodeURL("", oauth2.AccessTypeOnline)
-	fmt.Fprintf(os.Stdout, "\nAuthenticate here:\n\n%v\n\n", authCodeUrl)
+	authCodeURL := OauthConfig.AuthCodeURL("", oauth2.AccessTypeOnline)
+	fmt.Fprintf(os.Stdout, "\nAuthenticate here:\n\n%v\n\n", authCodeURL)
 
 	token := <-tokenChan
 

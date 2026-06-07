@@ -21,8 +21,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const SchwabTraderApiAddress = "https://api.schwabapi.com/trader/v1/"
-const SchwabMarketDataApiAddress = "https://api.schwabapi.com/marketdata/v1/"
+const SchwabTraderAPIAddress = "https://api.schwabapi.com/trader/v1/"
+const SchwabMarketDataAPIAddress = "https://api.schwabapi.com/marketdata/v1/"
 
 type Account struct {
 	SecuritiesAccount trader.SecuritiesAccount
@@ -224,7 +224,7 @@ func InvestCashHandlerFunc(a *App, account *Account) AppHandler {
 }
 
 func GetAssetPrices(a *App, tickers []string) map[string]float64 {
-	addr := fmt.Sprintf(SchwabMarketDataApiAddress+"quotes?symbols=%s", strings.Join(tickers, "%2C")) + "&fields=quote&indicative=false"
+	addr := fmt.Sprintf(SchwabMarketDataAPIAddress+"quotes?symbols=%s", strings.Join(tickers, "%2C")) + "&fields=quote&indicative=false"
 	resp, err := a.client.Get(addr)
 	if err != nil {
 		log.Fatal(err)
@@ -296,7 +296,7 @@ func PlaceTriggerOrderHandlerFunc(a *App, account *Account, orders map[string]fl
 			log.Fatal(err)
 		}
 		resp, err := a.client.Post(
-			SchwabTraderApiAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
+			SchwabTraderAPIAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
 			"application/json",
 			bytes.NewBuffer(orderData),
 		)
@@ -343,11 +343,13 @@ func PlaceBuyOrderHandlerFunc(a *App, account *Account, orders map[string]float6
 			})
 		}
 		orderData, err := json.Marshal(order)
+		pretty, _ := json.MarshalIndent(order, "", "  ")
+		fmt.Println("serialized order", string(pretty))
 		if err != nil {
 			log.Fatal(err)
 		}
 		resp, err := a.client.Post(
-			SchwabTraderApiAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
+			SchwabTraderAPIAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
 			"application/json",
 			bytes.NewBuffer(orderData),
 		)
@@ -438,7 +440,7 @@ func PrintAccountsHandler(a *App) AppHandler {
 }
 
 func (a *App) GetAccounts() ([]Account, error) {
-	resp, err := a.client.Get(SchwabTraderApiAddress + "accounts/accountNumbers")
+	resp, err := a.client.Get(SchwabTraderAPIAddress + "accounts/accountNumbers")
 	if err != nil {
 		ue := err.(*url.Error)
 		if _, ok := ue.Err.(*oauth2.RetrieveError); ok {
@@ -458,7 +460,7 @@ func (a *App) GetAccounts() ([]Account, error) {
 
 	var res []Account
 	for _, acc := range accounts {
-		resp, err := a.client.Get(SchwabTraderApiAddress + "accounts/" + acc.HashValue + "?fields=positions")
+		resp, err := a.client.Get(SchwabTraderAPIAddress + "accounts/" + acc.HashValue + "?fields=positions")
 		if err != nil {
 			log.Fatal(err)
 		}
