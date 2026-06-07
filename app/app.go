@@ -320,51 +320,61 @@ func PlaceTriggerOrderHandlerFunc(a *App, account *Account, orders map[string]fl
 
 func PlaceBuyOrderHandlerFunc(a *App, account *Account, orders map[string]float64) AppHandler {
 	return func(a *App) AppHandler {
-		fmt.Println("placing buy order")
-		order := trader.Order{
-			OrderType:          "MARKET",
-			Session:            "NORMAL",
-			Cancelable:         true,
-			Duration:           "DAY",
-			OrderStrategyType:  "SINGLE",
-			OrderLegCollection: make([]trader.OrderLeg, 0),
-		}
+		fmt.Println("placing buy order(s)")
+		// Schwab rejects a SINGLE equity order that carries multiple legs, so place
+		// one single-leg MARKET order per ticker.
 		for ticker, count := range orders {
 			if count < 1 {
 				continue
 			}
-			order.OrderLegCollection = append(order.OrderLegCollection, trader.OrderLeg{
-				Instruction: "BUY",
-				Quantity:    count,
-				Instrument: trader.Instrument{
-					Symbol:    ticker,
-					AssetType: "EQUITY",
+			order := trader.Order{
+				OrderType:         "MARKET",
+				Session:           "NORMAL",
+				Duration:          "DAY",
+				OrderStrategyType: "SINGLE",
+				OrderLegCollection: []trader.OrderLeg{
+					{
+						Instruction: "BUY",
+						Quantity:    count,
+						Instrument: trader.Instrument{
+							Symbol:    ticker,
+							AssetType: "EQUITY",
+						},
+					},
 				},
-			})
-		}
-		orderData, err := json.Marshal(order)
-		pretty, _ := json.MarshalIndent(order, "", "  ")
-		fmt.Println("serialized order", string(pretty))
-		if err != nil {
-			log.Fatal(err)
-		}
-		resp, err := a.client.Post(
-			SchwabTraderAPIAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
-			"application/json",
-			bytes.NewBuffer(orderData),
-		)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != 201 {
-			log.Fatal("Failed to place order", string(respBody))
+			}
+			if err := a.postOrder(account, order); err != nil {
+				log.Fatalf("Failed to place buy order for %v: %v", ticker, err)
+			}
+			fmt.Fprintf(os.Stdout, "%v: ordered %v shares\n", ticker, count)
 		}
 
 		fmt.Println("\nOrder(s) Placed Successfully")
 		return MainOptionsHandler
 	}
+}
+
+// postOrder submits a single order for the account. It returns an error containing
+// the Schwab response body when the order is not accepted (status != 201 Created).
+func (a *App) postOrder(account *Account, order trader.Order) error {
+	orderData, err := json.Marshal(order)
+	if err != nil {
+		return err
+	}
+	resp, err := a.client.Post(
+		SchwabTraderAPIAddress+fmt.Sprintf("accounts/%v/orders", account.AccountHashValue),
+		"application/json",
+		bytes.NewBuffer(orderData),
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 201 {
+		return fmt.Errorf("status %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
 }
 
 func RebalanceAccountHandlerFunc(a *App, account *Account) AppHandler {
